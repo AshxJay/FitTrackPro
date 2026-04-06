@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-  AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  AreaChart, Area, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts';
 import { bodyWeightHistory } from '../../shared/lib/mockData';

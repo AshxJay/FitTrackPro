@@ -1,5 +1,10 @@
 import { create } from 'zustand';
 import type { ExerciseLog, SetLog, PersonalRecord } from '../types';
+import { saveWorkoutSession } from '../lib/db';
+import { useAppStore } from './appStore';
+
+// Get app store state directly
+const getAppStore = () => useAppStore.getState();
 
 export interface ActiveSession {
   id: string;
@@ -60,7 +65,7 @@ function isPR(exerciseName: string, weight: number, reps: number): boolean {
   return calcOneRM(weight, reps) > calcOneRM(best.weight, best.reps);
 }
 
-export const useWorkoutLogger = create<WorkoutLoggerStore>((set) => ({
+export const useWorkoutLogger = create<WorkoutLoggerStore>((set, get) => ({
   session: null,
 
   startSession: (name, exercises) => set({
@@ -77,9 +82,30 @@ export const useWorkoutLogger = create<WorkoutLoggerStore>((set) => ({
     }
   }),
 
-  endSession: () => set(s => ({
-    session: s.session ? { ...s.session, showSummary: true } : null
-  })),
+  endSession: async () => {
+    const s = get().session;
+    const fu = getAppStore().firebaseUser;
+    if (s && fu) {
+      try {
+        await saveWorkoutSession(fu.uid, {
+          id: s.id,
+          name: s.name,
+          startedAt: s.startedAt,
+          completedAt: new Date(),
+          duration: s.elapsedSeconds,
+          type: 'strength', // Simplified for now
+          exercises: s.exercises,
+          notes: '',
+          mood: 3,
+          totalVolume: s.exercises.reduce((v, ex) => v + ex.sets.reduce((sv, st) => sv + (st.completed ? st.weight * st.reps : 0), 0), 0),
+          prsBreached: s.newPRs,
+        });
+      } catch (err) {
+        console.error('Failed to save workout session', err);
+      }
+    }
+    set(s => ({ session: s.session ? { ...s.session, showSummary: true } : null }));
+  },
 
   dismissSummary: () => set({ session: null }),
 

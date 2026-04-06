@@ -85,7 +85,7 @@ const bottomItems = [
 ];
 
 export default function Sidebar() {
-  const { activeTab, setActiveTab } = useAppStore();
+  const { activeTab, setActiveTab, user } = useAppStore();
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -134,7 +134,7 @@ export default function Sidebar() {
 
       {/* User avatar */}
       <div style={{ marginTop: 12, width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,var(--violet),var(--mint))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Syne, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
-        AR
+        {user?.displayName ? user.displayName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'AR'}
       </div>
     </nav>
   );

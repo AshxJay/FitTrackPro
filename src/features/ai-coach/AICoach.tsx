@@ -137,7 +137,10 @@ export default function AICoach() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--border)' }}>
         {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 42, height: 42, borderRadius: 14, background: 'linear-gradient(135deg,var(--violet),var(--mint))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(124,92,252,0.4)', position: 'relative' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--bg4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
+            {user?.displayName ? user.displayName.charAt(0) : 'A'}
+          </div>
+          <div style={{ position: 'relative' }}>
             <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
               <circle cx="12" cy="12" r="3" fill="#fff" />
               <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
@@ -173,7 +176,7 @@ export default function AICoach() {
                 {msg.content ? formatMsg(msg.content) : <span style={{ opacity: 0.5, fontStyle: 'italic', fontSize: 12 }}>Thinking…</span>}
               </div>
               {msg.role === 'user' && (
-                <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 4 }}>{user.displayName}</div>
+                <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 4 }}>{user?.displayName ?? 'Athlete'}</div>
               )}
             </div>
           ))}

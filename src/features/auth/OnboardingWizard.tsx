@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useAppStore } from '../../shared/stores/appStore';
+import { updateUserProfile } from '../../shared/lib/db';
 
-interface Props { name: string }
+// name passed via props removed, we fetch from store user if available
 
 type Goal = 'build_muscle' | 'lose_fat' | 'endurance' | 'athletic' | 'general';
 type Level = 'beginner' | 'intermediate' | 'advanced' | 'elite';
@@ -29,12 +30,12 @@ const EQUIPMENT: { id: Equipment; label: string; desc: string; emoji: string }[]
   { id: 'commercial', label: 'Commercial Gym', desc: 'Full facility access', emoji: '🏟️' },
 ];
 
-export default function OnboardingWizard({ name }: Props) {
-  const { setAuthenticated } = useAppStore();
+export default function OnboardingWizard({ onComplete }: { onComplete: () => void }) {
+  const { user, firebaseUser } = useAppStore();
   const [step, setStep] = useState(0);
   const [goal, setGoal] = useState<Goal | null>(null);
   const [level, setLevel] = useState<Level | null>(null);
-  const [stats, setStats] = useState({ height: 175, weight: 75, age: 25, unit: 'metric' as 'metric' | 'imperial' });
+  const [stats, setStats] = useState({ height: 175, weight: 75, age: 25, unit: 'metric' as 'metric' | 'imperial', gender: 'unknown' });
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [completing, setCompleting] = useState(false);
 
@@ -46,8 +47,20 @@ export default function OnboardingWizard({ name }: Props) {
   const next = async () => {
     if (step < 3) { setStep(s => s + 1); return; }
     setCompleting(true);
-    await new Promise(r => setTimeout(r, 1200));
-    setAuthenticated(true);
+    try {
+      if (firebaseUser) {
+        await updateUserProfile(firebaseUser.uid, {
+          goals: goal ? [goal] : ['general'],
+          experienceLevel: level ?? 'beginner',
+          stats,
+          equipment: equipment.length > 0 ? equipment : ['bodyweight'],
+        });
+      }
+      onComplete?.();
+    } catch (e) {
+      console.error('Failed to save onboarding profile', e);
+      setCompleting(false);
+    }
   };
 
   const STEPS = ['Your Goal', 'Experience', 'Body Stats', 'Equipment'];
@@ -91,7 +104,7 @@ export default function OnboardingWizard({ name }: Props) {
         {step === 0 && (
           <div style={{ animation: 'fadeUp 0.3s ease' }}>
             <h2 style={{ fontFamily: 'Syne,sans-serif', fontSize: 24, fontWeight: 800, color: 'var(--txt)', marginBottom: 8 }}>
-              Hey {name.split(' ')[0]}! What's your primary goal?
+              Hey {user?.displayName ? user.displayName.split(' ')[0] : 'Athlete'}! What's your primary goal?
             </h2>
             <p style={{ fontSize: 14, color: 'var(--txt3)', marginBottom: 28 }}>We'll build your entire training plan around this.</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { strengthHistory } from '../../shared/lib/mockData';
 
 type Lift = 'bench' | 'squat' | 'deadlift' | 'ohp';
@@ -72,7 +72,7 @@ function StandardsBar({ lift }: { lift: Lift }) {
       </div>
       {/* Level labels */}
       <div style={{ position: 'relative', height: 18, marginTop: 4 }}>
-        {LEVELS.map((lvl, i) => (
+        {LEVELS.map(lvl => (
           <div key={lvl} style={{ position: 'absolute', left: `${pct(std[lvl])}%`, transform: 'translateX(-50%)', fontSize: 10, color: 'var(--txt3)', whiteSpace: 'nowrap' }}>
             {lvl}<br />{std[lvl]}
           </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAppStore } from '../../shared/stores/appStore';
 
 interface Props {
   onSwitchToLogin: () => void;
@@ -9,30 +10,39 @@ const S = {
   input: {
     width: '100%', padding: '12px 16px', borderRadius: 10,
     background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-    color: 'var(--txt)', fontSize: 14, fontFamily: 'DM Sans, sans-serif', outline: 'none', transition: 'border 0.2s',
+    color: 'var(--txt)', fontSize: 14, fontFamily: 'DM Sans, sans-serif',
+    outline: 'none', transition: 'border 0.2s', boxSizing: 'border-box',
   } as React.CSSProperties,
   label: { fontSize: 12, fontWeight: 500, color: 'var(--txt2)', marginBottom: 6, display: 'block' } as React.CSSProperties,
 };
 
 export default function SignupPage({ onSwitchToLogin, onSignedUp }: Props) {
+  const { signup, authError, clearAuthError } = useAppStore();
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' });
   const [loading, setLoading] = useState(false);
   const [focused, setFocused] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const [localError, setLocalError] = useState('');
 
   const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }));
+  const inputStyle = (key: string) => ({ ...S.input, borderColor: focused === key ? 'var(--mint)' : 'rgba(255,255,255,0.1)' });
+  const displayError = localError || authError;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.password !== form.confirm) { setError('Passwords do not match'); return; }
-    if (form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
-    setError('');
+    setLocalError('');
+    clearAuthError();
+    if (form.password !== form.confirm) { setLocalError('Passwords do not match'); return; }
+    if (form.password.length < 6) { setLocalError('Password must be at least 6 characters'); return; }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 800));
-    onSignedUp({ name: form.name, email: form.email });
+    try {
+      await signup(form.name, form.email, form.password);
+      onSignedUp({ name: form.name, email: form.email });
+    } catch {
+      // authError from store is displayed
+    } finally {
+      setLoading(false);
+    }
   };
-
-  const inputStyle = (key: string) => ({ ...S.input, borderColor: focused === key ? 'var(--violet)' : 'rgba(255,255,255,0.1)' });
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -64,7 +74,6 @@ export default function SignupPage({ onSwitchToLogin, onSignedUp }: Props) {
             Join 50,000+ athletes who are crushing their goals with data-driven training and AI-powered coaching.
           </p>
 
-          {/* Feature bullets */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, textAlign: 'left', maxWidth: 300, margin: '0 auto' }}>
             {[
               { icon: '🤖', text: 'AI Coach that adapts to your progress' },
@@ -89,29 +98,35 @@ export default function SignupPage({ onSwitchToLogin, onSignedUp }: Props) {
             <p style={{ fontSize: 14, color: 'var(--txt3)', margin: 0 }}>Free forever. No credit card required.</p>
           </div>
 
-          {error && (
-            <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(255,59,92,0.12)', border: '1px solid rgba(255,59,92,0.25)', color: 'var(--red)', fontSize: 13, marginBottom: 16 }}>{error}</div>
+          {displayError && (
+            <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(255,59,92,0.12)', border: '1px solid rgba(255,59,92,0.25)', color: 'var(--red)', fontSize: 13, marginBottom: 16 }}>
+              {displayError}
+            </div>
           )}
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label style={S.label}>Full name</label>
-              <input required value={form.name} onChange={e => set('name', e.target.value)} placeholder="Alex Rivera" onFocus={() => setFocused('name')} onBlur={() => setFocused(null)} style={inputStyle('name')} />
+              <input id="signup-name" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="Alex Rivera" disabled={loading} onFocus={() => setFocused('name')} onBlur={() => setFocused(null)} style={inputStyle('name')} />
             </div>
             <div>
               <label style={S.label}>Email address</label>
-              <input type="email" required value={form.email} onChange={e => set('email', e.target.value)} placeholder="alex@example.com" onFocus={() => setFocused('email')} onBlur={() => setFocused(null)} style={inputStyle('email')} />
+              <input id="signup-email" type="email" required value={form.email} onChange={e => set('email', e.target.value)} placeholder="alex@example.com" disabled={loading} onFocus={() => setFocused('email')} onBlur={() => setFocused(null)} style={inputStyle('email')} />
             </div>
             <div>
               <label style={S.label}>Password</label>
-              <input type="password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Min. 6 characters" onFocus={() => setFocused('pass')} onBlur={() => setFocused(null)} style={inputStyle('pass')} />
+              <input id="signup-password" type="password" required value={form.password} onChange={e => set('password', e.target.value)} placeholder="Min. 6 characters" disabled={loading} onFocus={() => setFocused('pass')} onBlur={() => setFocused(null)} style={inputStyle('pass')} />
             </div>
             <div>
               <label style={S.label}>Confirm password</label>
-              <input type="password" required value={form.confirm} onChange={e => set('confirm', e.target.value)} placeholder="Repeat your password" onFocus={() => setFocused('conf')} onBlur={() => setFocused(null)} style={inputStyle('conf')} />
+              <input id="signup-confirm" type="password" required value={form.confirm} onChange={e => set('confirm', e.target.value)} placeholder="Repeat your password" disabled={loading} onFocus={() => setFocused('conf')} onBlur={() => setFocused(null)} style={inputStyle('conf')} />
             </div>
 
-            <button type="submit" disabled={loading} style={{ width: '100%', padding: '13px', marginTop: 4, borderRadius: 10, border: 'none', cursor: 'pointer', fontFamily: 'Syne,sans-serif', fontSize: 14, fontWeight: 700, background: loading ? 'rgba(0,229,160,0.3)' : 'linear-gradient(135deg,var(--mint),#00b87a)', color: '#020f09', transition: 'all 0.2s', boxShadow: loading ? 'none' : '0 4px 24px rgba(0,229,160,0.3)' }}>
+            <button
+              id="signup-submit"
+              type="submit" disabled={loading}
+              style={{ width: '100%', padding: '13px', marginTop: 4, borderRadius: 10, border: 'none', cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'Syne,sans-serif', fontSize: 14, fontWeight: 700, background: loading ? 'rgba(0,229,160,0.3)' : 'linear-gradient(135deg,var(--mint),#00b87a)', color: '#020f09', transition: 'all 0.2s', boxShadow: loading ? 'none' : '0 4px 24px rgba(0,229,160,0.3)' }}
+            >
               {loading ? 'Creating account…' : 'Create Account →'}
             </button>
           </form>

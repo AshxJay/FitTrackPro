@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { COMMUNITY_USERS, FEED_POSTS, type FeedPost, type CommunityUser } from './mockCommunityData';
+import { COMMUNITY_USERS, FEED_POSTS, type CommunityUser } from './mockCommunityData';
 
 const ME = COMMUNITY_USERS[0]; // Alex Rivera
 

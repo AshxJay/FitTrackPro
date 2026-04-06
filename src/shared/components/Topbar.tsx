@@ -1,7 +1,7 @@
 import { useAppStore } from '../stores/appStore';
 
 export default function Topbar() {
-  const { setCommandPaletteOpen } = useAppStore();
+  const { setCommandPaletteOpen, user } = useAppStore();
   const now = new Date();
   const dayStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const hour = now.getHours();
@@ -11,7 +11,7 @@ export default function Topbar() {
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--bg)' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div style={{ fontSize: 11, color: 'var(--txt3)', fontWeight: 400, letterSpacing: '0.5px', textTransform: 'uppercase' }}>{dayStr}</div>
-        <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 20, fontWeight: 700, letterSpacing: '-0.5px' }}>{greeting}, Alex 👋</div>
+        <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 20, fontWeight: 700, letterSpacing: '-0.5px' }}>{greeting}, {user?.displayName ? user.displayName.split(' ')[0] : 'Athlete'} 👋</div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -39,7 +39,7 @@ export default function Topbar() {
 
         {/* User avatar */}
         <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,var(--violet),var(--mint))', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Syne, sans-serif', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-          AR
+          {user?.displayName ? user.displayName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'AR'}
         </div>
       </div>
     </div>

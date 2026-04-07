@@ -1,7 +1,8 @@
 import {
   doc, getDoc, setDoc, updateDoc,
   collection, addDoc, getDocs, query, orderBy, limit,
-  onSnapshot, serverTimestamp, type Unsubscribe,
+  onSnapshot, serverTimestamp, arrayUnion, arrayRemove,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type { User, WorkoutSession, BodyMetric } from '../types';
@@ -184,4 +185,103 @@ export async function getNutritionDay(
   const ref = doc(db, 'nutrition', uid, 'days', dateKey);
   const snap = await getDoc(ref);
   return snap.exists() ? (snap.data() as NutritionDay) : null;
+}
+
+// ─── Community Posts ──────────────────────────────────────────────────────────
+
+export interface CommunityPost {
+  id?: string;
+  authorId: string;
+  authorName: string;
+  authorInitials: string;
+  authorColor: string;
+  content: string;
+  type: 'workout' | 'pr' | 'streak' | 'update';
+  meta?: { exercise?: string; weight?: number; reps?: number; streak?: number };
+  likes: number;
+  likedBy: string[];
+  comments: number;
+  createdAt: Date | null;
+}
+
+export async function createPost(
+  post: Omit<CommunityPost, 'id' | 'likes' | 'likedBy' | 'comments' | 'createdAt'>,
+): Promise<string> {
+  const ref = await addDoc(collection(db, 'communityPosts'), {
+    ...post,
+    likes: 0,
+    likedBy: [],
+    comments: 0,
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+}
+
+export async function togglePostLike(postId: string, uid: string, currentlyLiked: boolean): Promise<void> {
+  const ref = doc(db, 'communityPosts', postId);
+  await updateDoc(ref, {
+    likedBy: currentlyLiked ? arrayRemove(uid) : arrayUnion(uid),
+    likes: currentlyLiked ? (await getDoc(ref)).data()!.likes - 1 : (await getDoc(ref)).data()!.likes + 1,
+  });
+}
+
+export function subscribeToFeed(
+  cb: (posts: CommunityPost[]) => void,
+  count = 30,
+): Unsubscribe {
+  const q = query(
+    collection(db, 'communityPosts'),
+    orderBy('createdAt', 'desc'),
+    limit(count),
+  );
+  return onSnapshot(q, snap => {
+    cb(snap.docs.map(d => ({
+      ...d.data(),
+      id: d.id,
+      createdAt: d.data().createdAt?.toDate?.() ?? null,
+    } as CommunityPost)));
+  });
+}
+
+// ─── AI Chat History ──────────────────────────────────────────────────────────
+
+export interface ChatMessage {
+  id?: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: Date | null;
+}
+
+export async function saveAIMessage(
+  uid: string,
+  msg: Omit<ChatMessage, 'id' | 'createdAt'>,
+): Promise<void> {
+  await addDoc(collection(db, 'aiChats', uid, 'messages'), {
+    ...msg,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export function subscribeToAIChat(
+  uid: string,
+  cb: (messages: ChatMessage[]) => void,
+): Unsubscribe {
+  const q = query(
+    collection(db, 'aiChats', uid, 'messages'),
+    orderBy('createdAt', 'asc'),
+    limit(40),
+  );
+  return onSnapshot(q, snap => {
+    cb(snap.docs.map(d => ({
+      ...d.data(),
+      id: d.id,
+      createdAt: d.data().createdAt?.toDate?.() ?? null,
+    } as ChatMessage)));
+  });
+}
+
+export async function clearAIChat(uid: string): Promise<void> {
+  const q = query(collection(db, 'aiChats', uid, 'messages'), limit(100));
+  const snap = await getDocs(q);
+  await Promise.all(snap.docs.map(d => import('firebase/firestore').then(({ deleteDoc }) => deleteDoc(d.ref))));
 }

@@ -70,7 +70,7 @@ function computeMonthlyPRs(sessions: WorkoutSession[]): { count: number; prs: ty
 }
 
 export default function Dashboard() {
-  const { workoutHistory, todayNutrition, weeklyStats } = useAppStore();
+  const { workoutHistory, weeklyStats } = useAppStore();
 
   const streak = useMemo(() => computeStreak(workoutHistory), [workoutHistory]);
   const weeklyVolume = useMemo(() => computeWeeklyVolume(workoutHistory), [workoutHistory]);
@@ -120,7 +120,7 @@ export default function Dashboard() {
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="#ff6b35"><path d="M12 2c0 0-7 6-7 12a7 7 0 0 0 14 0c0-6-7-12-7-12z"/></svg>}
         />
         <StatCard
-          label="Weekly Volume" value={`${Math.round(displayVolume).toLocaleString()} kg`} subLabel="total lifted this week"
+          label="Weekly Volume" value={Math.round(displayVolume)} suffix=" kg" subLabel="total lifted this week"
           trend={workoutHistory.length > 0 ? undefined : "8.3%"} trendUp
           color="violet" animDelay={300}
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9b7ffe" strokeWidth="2.2" strokeLinecap="round"><path d="M6 12h4m4 0h4M10 12V8m4 4v4"/><rect x="2" y="10" width="4" height="4" rx="1"/><rect x="18" y="10" width="4" height="4" rx="1"/></svg>}

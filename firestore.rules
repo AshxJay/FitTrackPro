@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── User Profiles ─────────────────────────────────────────────────────────
+    // Each user can only read and write their own profile document
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── Workout Sessions ──────────────────────────────────────────────────────
+    match /workouts/{uid}/sessions/{sessionId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── Nutrition ─────────────────────────────────────────────────────────────
+    match /nutrition/{uid}/days/{day} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── Body Metrics ──────────────────────────────────────────────────────────
+    match /bodyMetrics/{uid}/entries/{entryId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── AI Chat History ───────────────────────────────────────────────────────
+    match /aiChats/{uid}/messages/{msgId} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ── Community Posts ───────────────────────────────────────────────────────
+    // Any authenticated user can read posts
+    // Only post authors can delete their own posts
+    // Likes (updating likes count) allowed for any authenticated user
+    match /communityPosts/{postId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.content.size() <= 1000;
+      allow update: if request.auth != null; // for toggling likes
+      allow delete: if request.auth != null
+        && resource.data.authorId == request.auth.uid;
+    }
+  }
+}

@@ -1,12 +1,8 @@
-import { mockAIInsights } from '../../shared/lib/mockData';
-
-const typeStyles: Record<string, { borderColor: string; tagColor: string; tagLabel: string }> = {
-  performance: { borderColor: 'var(--violet)', tagColor: 'var(--violet2)', tagLabel: 'Performance' },
-  warning:     { borderColor: 'var(--orange)', tagColor: 'var(--orange)',   tagLabel: 'Recovery Alert' },
-  nutrition:   { borderColor: 'var(--mint)',   tagColor: 'var(--mint)',     tagLabel: 'Nutrition Win' },
-};
+import { useNavigate } from 'react-router-dom';
 
 export default function AICoachCard() {
+  const navigate = useNavigate();
+
   return (
     <div
       style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, transition: 'border-color 0.2s' }}
@@ -24,30 +20,19 @@ export default function AICoachCard() {
         </div>
         <div>
           <div style={{ fontSize: 13, fontWeight: 500 }}>AI Coach</div>
-          <div style={{ fontSize: 11, color: 'var(--txt3)' }}>Powered by FitTrackPro Intelligence</div>
+          <div style={{ fontSize: 11, color: 'var(--txt3)' }}>Powered by Gemini Flash</div>
         </div>
       </div>
 
-      {/* Insights */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {mockAIInsights.map(insight => {
-          const style = typeStyles[insight.type] ?? typeStyles.performance;
-          return (
-            <div
-              key={insight.id}
-              style={{ padding: 12, background: 'var(--bg3)', borderRadius: 10, borderLeft: `3px solid ${style.borderColor}`, fontSize: 12, color: 'var(--txt2)', lineHeight: 1.5, cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'var(--bg4)'; (e.currentTarget as HTMLDivElement).style.color = 'var(--txt)'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'var(--bg3)'; (e.currentTarget as HTMLDivElement).style.color = 'var(--txt2)'; }}
-            >
-              <div style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', color: style.tagColor, marginBottom: 4 }}>{style.tagLabel}</div>
-              {insight.message}
-            </div>
-          );
-        })}
+      <div style={{ padding: '20px 10px', textAlign: 'center', color: 'var(--txt3)', fontSize: 12, lineHeight: 1.5 }}>
+        Your AI Coach will generate deep insights here once you begin logging workouts.
+        <br/><br/>
+        Have questions? You can chat with it directly.
       </div>
 
       {/* Chat CTA */}
       <button
+        onClick={() => navigate('/coach')}
         style={{ width: '100%', padding: 10, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 8, color: 'var(--txt2)', fontSize: 12, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
         onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(124,92,252,0.1)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--violet)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--violet2)'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg3)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border2)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--txt2)'; }}

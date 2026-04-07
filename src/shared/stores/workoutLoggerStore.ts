@@ -22,6 +22,7 @@ interface WorkoutLoggerStore {
   session: ActiveSession | null;
   startSession: (name: string, exercises: ExerciseLog[]) => void;
   endSession: () => void;
+  addExercise: (exerciseName: string, exerciseId: string) => void;
   addSet: (exerciseIdx: number) => void;
   updateSet: (exerciseIdx: number, setIdx: number, field: keyof SetLog, value: number | boolean) => void;
   toggleSetComplete: (exerciseIdx: number, setIdx: number) => void;
@@ -108,6 +109,18 @@ export const useWorkoutLogger = create<WorkoutLoggerStore>((set, get) => ({
   },
 
   dismissSummary: () => set({ session: null }),
+
+  addExercise: (exerciseName, exerciseId) => set(s => {
+    if (!s.session) return s;
+    const newEx: ExerciseLog = {
+      exerciseId,
+      exerciseName,
+      sets: [makeDefaultSet(1)],
+      notes: '',
+      order: s.session.exercises.length,
+    };
+    return { session: { ...s.session, exercises: [...s.session.exercises, newEx] } };
+  }),
 
   addSet: (exerciseIdx) => set(s => {
     if (!s.session) return s;

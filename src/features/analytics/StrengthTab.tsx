@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { strengthHistory } from '../../shared/lib/mockData';
 import { useAppStore } from '../../shared/stores/appStore';
 
 type Lift = 'bench' | 'squat' | 'deadlift' | 'ohp';
@@ -13,8 +12,6 @@ const STANDARDS = {
   ohp:      { Beginner: 35,  Novice: 50,  Intermediate: 65,  Advanced: 88,  Elite: 110 },
 };
 
-// Module-level mock fallback (used when no real PRs exist)
-const MOCK_CURRENT: Record<Lift, number> = { bench: 103, squat: 140, deadlift: 175, ohp: 70 };
 const LIFT_LABELS: Record<Lift, string> = { bench: 'Bench Press', squat: 'Back Squat', deadlift: 'Deadlift', ohp: 'Overhead Press' };
 const LIFT_COLORS: Record<Lift, string> = { bench: 'var(--violet2)', squat: 'var(--mint)', deadlift: 'var(--gold)', ohp: 'var(--orange)' };
 
@@ -78,9 +75,9 @@ export default function StrengthTab() {
   const { workoutHistory } = useAppStore();
   const [activeLift, setActiveLift] = useState<Lift>('bench');
 
-  // Build 1RM map from real PR history; fall back to mock values
+  // Build 1RM map from real PR history
   const CURRENT = useMemo(() => {
-    const result = { ...MOCK_CURRENT };
+    const result: Record<Lift, number> = { bench: 0, squat: 0, deadlift: 0, ohp: 0 };
     workoutHistory.forEach(s => {
       (s.prsBreached ?? []).forEach(pr => {
         const key = EXERCISE_TO_LIFT[pr.exerciseName.toLowerCase()];
@@ -96,13 +93,7 @@ export default function StrengthTab() {
     (s.prsBreached ?? []).some(pr => EXERCISE_TO_LIFT[pr.exerciseName.toLowerCase()])
   );
 
-  const chartData = strengthHistory.labels.map((l, i) => ({
-    date: l,
-    bench: strengthHistory.bench[i],
-    squat: strengthHistory.squat[i],
-    deadlift: strengthHistory.deadlift[i],
-    ohp: strengthHistory.ohp[i],
-  }));
+  const chartData: any[] = [];
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
@@ -152,18 +143,24 @@ export default function StrengthTab() {
             ))}
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={220}>
-          <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-            <XAxis dataKey="date" tick={{ fill: 'var(--txt3)', fontSize: 11 }} axisLine={false} tickLine={false} interval={2} />
-            <YAxis tick={{ fill: 'var(--txt3)', fontSize: 11 }} axisLine={false} tickLine={false} />
-            <Tooltip content={<CustomTooltip />} />
-            <Line type="monotone" dataKey={activeLift} stroke={LIFT_COLORS[activeLift]} strokeWidth={2.5} dot={{ fill: LIFT_COLORS[activeLift], r: 3 }} activeDot={{ r: 5 }} />
-          </LineChart>
-        </ResponsiveContainer>
+        {hasRealPRs ? (
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+              <XAxis dataKey="date" tick={{ fill: 'var(--txt3)', fontSize: 11 }} axisLine={false} tickLine={false} interval={2} />
+              <YAxis tick={{ fill: 'var(--txt3)', fontSize: 11 }} axisLine={false} tickLine={false} />
+              <Tooltip content={<CustomTooltip />} />
+              <Line type="monotone" dataKey={activeLift} stroke={LIFT_COLORS[activeLift]} strokeWidth={2.5} dot={{ fill: LIFT_COLORS[activeLift], r: 3 }} activeDot={{ r: 5 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--txt3)', fontSize: 13, background: 'var(--bg3)', borderRadius: 12 }}>
+            Log sessions with heavy compounds to visualize progress trends.
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 12, marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
           {(['bench', 'squat', 'deadlift', 'ohp'] as Lift[]).map(l => {
-            const gains = CURRENT[l] - (strengthHistory as any)[l][0];
+            const gains = CURRENT[l];
             return (
               <div key={l} style={{ flex: 1, textAlign: 'center', background: 'var(--bg3)', borderRadius: 10, padding: '10px' }}>
                 <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 15, fontWeight: 700, color: LIFT_COLORS[l] }}>+{gains} kg</div>

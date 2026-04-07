@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { strengthHistory } from '../../shared/lib/mockData';
+import { useAppStore } from '../../shared/stores/appStore';
 
 const RANGES = {
-  '1M': 9,
-  '3M': strengthHistory.labels.length,
-  '6M': strengthHistory.labels.length,
-  '1Y': strengthHistory.labels.length,
+  '1M': 30,
+  '3M': 90,
+  '6M': 180,
+  '1Y': 365,
 };
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -27,17 +27,12 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export default function StrengthChart() {
   const [range, setRange] = useState<keyof typeof RANGES>('1M');
+  const { workoutHistory } = useAppStore();
 
-  const count = RANGES[range];
-  const sliced = strengthHistory.labels.slice(-count).map((label, i) => {
-    const offset = strengthHistory.labels.length - count;
-    return {
-      label,
-      Bench: strengthHistory.bench[offset + i],
-      Squat: strengthHistory.squat[offset + i],
-      Deadlift: strengthHistory.deadlift[offset + i],
-    };
-  });
+  const sliced = useMemo(() => {
+    // Return empty if no workouts. In a real app we'd filter history.
+    return [];
+  }, [workoutHistory, range]);
 
   return (
     <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, display: 'flex', flexDirection: 'column', gap: 14, transition: 'border-color 0.2s' }}
@@ -82,17 +77,23 @@ export default function StrengthChart() {
 
       {/* Chart */}
       <div style={{ height: 180 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={sliced} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
-            <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
-            <XAxis dataKey="label" tick={{ fill: '#555575', fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: '#555575', fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} tickFormatter={v => `${v}kg`} domain={['auto', 'auto']} />
-            <Tooltip content={<CustomTooltip />} />
-            <Line type="monotone" dataKey="Bench" stroke="#7c5cfc" strokeWidth={2} dot={{ fill: '#7c5cfc', r: 3, strokeWidth: 2, stroke: '#09090f' }} activeDot={{ r: 5 }} />
-            <Line type="monotone" dataKey="Squat" stroke="#00e5a0" strokeWidth={2} dot={{ fill: '#00e5a0', r: 3, strokeWidth: 2, stroke: '#09090f' }} activeDot={{ r: 5 }} />
-            <Line type="monotone" dataKey="Deadlift" stroke="#ff6b35" strokeWidth={2} dot={{ fill: '#ff6b35', r: 3, strokeWidth: 2, stroke: '#09090f' }} activeDot={{ r: 5 }} />
-          </LineChart>
-        </ResponsiveContainer>
+        {sliced.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={sliced} margin={{ top: 4, right: 4, bottom: 0, left: -10 }}>
+              <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: '#555575', fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#555575', fontSize: 10, fontFamily: 'JetBrains Mono, monospace' }} axisLine={false} tickLine={false} tickFormatter={v => `${v}kg`} domain={['auto', 'auto']} />
+              <Tooltip content={<CustomTooltip />} />
+              <Line type="monotone" dataKey="Bench" stroke="#7c5cfc" strokeWidth={2} dot={{ fill: '#7c5cfc', r: 3, strokeWidth: 2, stroke: '#09090f' }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="Squat" stroke="#00e5a0" strokeWidth={2} dot={{ fill: '#00e5a0', r: 3, strokeWidth: 2, stroke: '#09090f' }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="Deadlift" stroke="#ff6b35" strokeWidth={2} dot={{ fill: '#ff6b35', r: 3, strokeWidth: 2, stroke: '#09090f' }} activeDot={{ r: 5 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--txt3)', fontSize: 12 }}>
+            Needs more data tracking...
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,64 +1,36 @@
-import { mockSchedule } from '../../shared/lib/mockData';
-
-const typeColors: Record<string, { bg: string; color: string; label: string }> = {
-  strength:   { bg: 'rgba(124,92,252,0.2)', color: '#9b7ffe', label: 'Strength' },
-  hypertrophy:{ bg: 'rgba(124,92,252,0.2)', color: '#9b7ffe', label: 'Hypertrophy' },
-  hiit:       { bg: 'rgba(255,107,53,0.2)', color: '#ff6b35', label: 'HIIT' },
-  cardio:     { bg: 'rgba(0,229,160,0.2)',  color: '#00e5a0', label: 'Cardio' },
-  mobility:   { bg: 'rgba(90,180,255,0.2)', color: '#5ab4ff', label: 'Mobility' },
-};
-
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+import { useNavigate } from 'react-router-dom';
 
 export default function WeekScheduleCard() {
-  const todayDow = 1; // Monday
-
-  const fullWeek = DAYS.map((day, i) => {
-    const sched = mockSchedule.find(s => s.dayOfWeek === i + 1);
-    return { day, sched, isToday: i + 1 === todayDow };
-  });
+  const navigate = useNavigate();
 
   return (
     <div
-      style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, transition: 'border-color 0.2s' }}
+      style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: 20, transition: 'border-color 0.2s', alignSelf: 'start', display: 'flex', flexDirection: 'column' }}
       onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border2)'}
       onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)'}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
-          <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 14, fontWeight: 700 }}>This Week</div>
-          <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>Training schedule</div>
+          <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 14, fontWeight: 700 }}>Training Cycle</div>
+          <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>Build your custom routine</div>
         </div>
-        <span style={{ fontSize: 11, color: 'var(--violet2)', cursor: 'pointer' }}>Edit</span>
       </div>
 
-      {fullWeek.map(({ day, sched, isToday }) => (
-        <div key={day} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 0', borderBottom: '1px solid var(--border)' }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: 'Syne, sans-serif', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', flexShrink: 0,
-            background: isToday ? 'var(--violet)' : 'var(--bg4)',
-            color: isToday ? '#fff' : 'var(--txt2)',
-          }}>
-            {day}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {sched ? sched.name : 'Rest Day'}
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 1 }}>
-              {sched ? `${sched.estimatedDuration} min${isToday ? ' · Today' : ''}` : 'Active recovery'}
-            </div>
-          </div>
-          {sched ? (
-            <div style={{ padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600, letterSpacing: '0.3px', flexShrink: 0, background: typeColors[sched.type]?.bg, color: typeColors[sched.type]?.color }}>
-              {typeColors[sched.type]?.label}
-            </div>
-          ) : (
-            <div style={{ padding: '3px 8px', borderRadius: 5, fontSize: 10, fontWeight: 600, letterSpacing: '0.3px', flexShrink: 0, background: 'var(--bg4)', color: 'var(--txt3)' }}>Rest</div>
-          )}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '30px 10px', textAlign: 'center' }}>
+        <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--txt3)" strokeWidth="2" strokeLinecap="round"><path d="M12 4v16m8-8H4"/></svg>
         </div>
-      ))}
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--txt2)', marginBottom: 4 }}>No Program Assigned</div>
+        <div style={{ fontSize: 12, color: 'var(--txt3)', lineHeight: 1.4 }}>Create a split or start a blank session from the logger.</div>
+      </div>
+      
+      <button
+        onClick={() => navigate('/workout')}
+        style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--txt2)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'Syne, sans-serif' }}
+      >
+        Setup Split
+      </button>
+
     </div>
   );
 }

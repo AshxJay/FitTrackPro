@@ -7,7 +7,6 @@ import WeekScheduleCard from './WeekScheduleCard';
 import NutritionCard from './NutritionCard';
 import AICoachCard from './AICoachCard';
 import { useAppStore } from '../../shared/stores/appStore';
-import { mockPRs } from '../../shared/lib/mockData';
 import { pct } from '../../shared/lib/utils';
 import type { WorkoutSession } from '../../shared/types';
 
@@ -52,7 +51,7 @@ function computeWeeklyVolume(sessions: WorkoutSession[]): number {
           sv + (st.completed ? st.weight * st.reps : 0), 0), 0), 0);
 }
 
-function computeMonthlyPRs(sessions: WorkoutSession[]): { count: number; prs: typeof mockPRs } {
+function computeMonthlyPRs(sessions: WorkoutSession[]) {
   const monthAgo = new Date();
   monthAgo.setDate(monthAgo.getDate() - 30);
   const recent = sessions.filter(s => {
@@ -61,7 +60,7 @@ function computeMonthlyPRs(sessions: WorkoutSession[]): { count: number; prs: ty
   });
   const allPRs = recent.flatMap(s => s.prsBreached ?? []);
   // Deduplicate by exerciseId, keep highest
-  const map = new Map<string, typeof mockPRs[0]>();
+  const map = new Map<string, any>();
   allPRs.forEach(pr => {
     const existing = map.get(pr.exerciseId);
     if (!existing || pr.estimatedOneRM > existing.estimatedOneRM) map.set(pr.exerciseId, pr);
@@ -76,11 +75,10 @@ export default function Dashboard() {
   const weeklyVolume = useMemo(() => computeWeeklyVolume(workoutHistory), [workoutHistory]);
   const { count: prsThisMonth, prs: recentPRs } = useMemo(() => computeMonthlyPRs(workoutHistory), [workoutHistory]);
 
-  // Fallback to mock data if no real data yet
-  const displayStreak = workoutHistory.length > 0 ? streak : weeklyStats.streak;
-  const displayVolume = workoutHistory.length > 0 ? weeklyVolume : weeklyStats.weeklyVolume;
-  const displayPRs = workoutHistory.length > 0 ? prsThisMonth : weeklyStats.prsThisMonth;
-  const displayPRList = recentPRs.length > 0 ? recentPRs : mockPRs;
+  const displayStreak = streak;
+  const displayVolume = weeklyVolume;
+  const displayPRs = prsThisMonth;
+  const displayPRList = recentPRs;
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg)' }}>
@@ -115,24 +113,24 @@ export default function Dashboard() {
       {/* Stat Cards Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
         <StatCard
-          label="Calories Burned" value={weeklyStats.caloriesBurned} subLabel="" trend="12%" trendUp
+          label="Calories Burned" value={weeklyStats.caloriesBurned} subLabel="live metrics coming soon" trend={undefined} 
           ringPct={pct(weeklyStats.caloriesBurned, weeklyStats.caloriesGoal)} color="orange" animDelay={200}
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="#ff6b35"><path d="M12 2c0 0-7 6-7 12a7 7 0 0 0 14 0c0-6-7-12-7-12z"/></svg>}
         />
         <StatCard
-          label="Weekly Volume" value={Math.round(displayVolume)} suffix=" kg" subLabel="total lifted this week"
-          trend={workoutHistory.length > 0 ? undefined : "8.3%"} trendUp
+          label="Weekly Volume" value={Math.round(displayVolume)} suffix=" kg" subLabel={workoutHistory.length ? "total lifted this week" : "log a workout to track"}
+          trend={undefined}
           color="violet" animDelay={300}
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9b7ffe" strokeWidth="2.2" strokeLinecap="round"><path d="M6 12h4m4 0h4M10 12V8m4 4v4"/><rect x="2" y="10" width="4" height="4" rx="1"/><rect x="18" y="10" width="4" height="4" rx="1"/></svg>}
         />
         <StatCard
-          label="Current Streak" value={displayStreak} subLabel={`days in a row 🔥`}
+          label="Current Streak" value={displayStreak} subLabel={workoutHistory.length ? "days in a row 🔥" : "no active streak"}
           color="mint" animDelay={400}
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="#00e5a0"><path d="M12 2c0 0-6 5-6 11a6 6 0 0 0 12 0C18 7 12 2 12 2z"/></svg>}
         />
         <StatCard
-          label="PRs This Month" value={displayPRs} subLabel={`Last month: ${weeklyStats.prsLastMonth}`}
-          trend={workoutHistory.length > 0 ? undefined : "60%"} trendUp
+          label="PRs This Month" value={displayPRs} subLabel={workoutHistory.length ? "new records set" : "0 new records"}
+          trend={undefined}
           color="gold" animDelay={500}
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="#f5c842"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>}
         />

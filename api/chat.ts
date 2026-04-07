@@ -1,6 +1,3 @@
-// Vercel Edge function — proxies requests to Google Gemini API
-// The API key is server-side only (no VITE_ prefix) so it's never exposed in the browser
-
 export const config = { runtime: 'edge' };
 
 interface Message {
@@ -25,9 +22,9 @@ export default async function handler(request: Request): Promise<Response> {
     return new Response('Method not allowed', { status: 405 });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured on server' }), {
+    return new Response(JSON.stringify({ error: 'GROQ_API_KEY not configured on server' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -42,42 +39,37 @@ export default async function handler(request: Request): Promise<Response> {
 
   const { messages, systemPrompt } = body;
 
-  // Convert from our format to Gemini's format
-  // Gemini uses "model" for assistant, and parts array
-  const geminiContents = messages.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
+  const groqMessages = [
+    { role: 'system', content: systemPrompt },
+    ...messages
+  ];
 
-  const geminiBody = {
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-    contents: geminiContents,
-    generationConfig: {
-      maxOutputTokens: 1024,
-      temperature: 0.75,
+  // Call Groq streaming endpoint (OpenAI compatible API)
+  const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
     },
-  };
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: groqMessages,
+      stream: true,
+      max_tokens: 1024,
+      temperature: 0.75
+    }),
+  });
 
-  // Call Gemini streaming endpoint
-  const geminiRes = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(geminiBody),
-    },
-  );
-
-  if (!geminiRes.ok) {
-    const errText = await geminiRes.text();
+  if (!groqRes.ok) {
+    const errText = await groqRes.text();
     return new Response(JSON.stringify({ error: errText }), {
-      status: geminiRes.status,
+      status: groqRes.status,
       headers: { 'Content-Type': 'application/json' },
     });
   }
 
-  // Pipe Gemini's SSE stream back to the client
-  return new Response(geminiRes.body, {
+  // Pipe Groq's SSE stream back to the client
+  return new Response(groqRes.body, {
     status: 200,
     headers: {
       'Content-Type': 'text/event-stream',

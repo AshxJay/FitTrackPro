@@ -19,7 +19,17 @@ import {
   subscribeToWorkoutHistory, subscribeToBodyMetrics,
   type NutritionDay, DEFAULT_NUTRITION,
 } from '../lib/db';
-import { weeklyStats } from '../lib/mockData';
+export const blankWeeklyStats = {
+  caloriesBurned: 0,
+  caloriesGoal: 2500,
+  weeklyVolume: 0,
+  lastWeekVolume: 0,
+  streak: 0,
+  streakBest: 0,
+  prsThisMonth: 0,
+  prsLastMonth: 0,
+  recoveryScore: 100,
+};
 import type { User, WorkoutSession, BodyMetric } from '../types';
 
 interface AuthError { message: string }
@@ -31,7 +41,7 @@ interface AppStore {
   activeTab: string;
   sidebarExpanded: boolean;
   commandPaletteOpen: boolean;
-  weeklyStats: typeof weeklyStats;
+  weeklyStats: typeof blankWeeklyStats;
   todayNutrition: NutritionDay;
   workoutHistory: WorkoutSession[];
   bodyMetrics: BodyMetric[];
@@ -91,7 +101,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   activeTab: 'dashboard',
   sidebarExpanded: false,
   commandPaletteOpen: false,
-  weeklyStats,
+  weeklyStats: blankWeeklyStats,
   todayNutrition: DEFAULT_NUTRITION,
   workoutHistory: [],
   bodyMetrics: [],

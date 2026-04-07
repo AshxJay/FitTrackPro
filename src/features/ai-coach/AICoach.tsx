@@ -4,15 +4,14 @@ import { saveAIMessage, subscribeToAIChat, clearAIChat, type ChatMessage } from 
 import type { NutritionDay } from '../../shared/lib/db';
 import type { WorkoutSession } from '../../shared/types';
 
-// ── Gemini Config ─────────────────────────────────────────────────────────────
-const GEMINI_MODEL = 'gemini-2.0-flash';
-const VITE_KEY = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
+// ── Groq Config ─────────────────────────────────────────────────────────────
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const VITE_KEY = import.meta.env.VITE_GROQ_API_KEY as string | undefined;
 const IS_DEV = import.meta.env.DEV as boolean;
 
-// In dev: call Gemini directly (VITE_ key is fine for local use)
-// In prod (Vercel): call /api/chat which holds the server-side GEMINI_API_KEY
-const GEMINI_DIRECT_URL = (key: string) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${key}`;
+// In dev: call Groq directly (VITE_ key is fine for local use)
+// In prod (Vercel): call /api/chat which holds the server-side GROQ_API_KEY
+const GROQ_DIRECT_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 // ── System Prompt ─────────────────────────────────────────────────────────────
 function buildSystemPrompt(
@@ -62,30 +61,30 @@ ${prSummary}
 Guidelines: Be direct, specific, and reference their actual data. Use numbers. Keep responses concise (3-5 sentences max unless a detailed plan is requested). You're a high-performance coach, not a general wellness advisor.`;
 }
 
-// ── Gemini API call ───────────────────────────────────────────────────────────
-async function callGemini(
+// ── Groq API call (OpenAI Compatible) ─────────────────────────────────────────
+async function callGroq(
   messages: { role: 'user' | 'assistant'; content: string }[],
   systemPrompt: string,
   onChunk: (text: string) => void,
 ): Promise<string> {
-  const geminiMessages = messages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-
-  const body = JSON.stringify({
-    systemInstruction: { parts: [{ text: systemPrompt }] },
-    contents: geminiMessages,
-    generationConfig: { maxOutputTokens: 1024, temperature: 0.75 },
-  });
+  const bodyPayload = {
+    model: GROQ_MODEL,
+    messages: [{ role: 'system', content: systemPrompt }, ...messages],
+    stream: true,
+    max_tokens: 1024,
+    temperature: 0.75,
+  };
 
   let response: Response;
   if (IS_DEV && VITE_KEY) {
-    // Local dev: call Gemini directly
-    response = await fetch(GEMINI_DIRECT_URL(VITE_KEY), {
+    // Local dev: call Groq directly
+    response = await fetch(GROQ_DIRECT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${VITE_KEY}`
+      },
+      body: JSON.stringify(bodyPayload),
     });
   } else {
     // Production: go through the secure Vercel API route
@@ -98,7 +97,7 @@ async function callGemini(
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`Gemini error ${response.status}: ${err}`);
+    throw new Error(`Groq error ${response.status}: ${err}`);
   }
 
   const reader = response.body!.getReader();
@@ -118,7 +117,7 @@ async function callGemini(
       if (!data || data === '[DONE]') continue;
       try {
         const parsed = JSON.parse(data);
-        const chunk: string = parsed?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+        const chunk = parsed?.choices?.[0]?.delta?.content ?? '';
         if (chunk) { fullText += chunk; onChunk(chunk); }
       } catch { /* skip malformed chunks */ }
     }
@@ -182,7 +181,7 @@ export default function AICoach() {
 
   const WELCOME: ChatMessage = {
     role: 'assistant',
-    content: `Hey ${displayName}! 👋 I'm your AI fitness coach, powered by Gemini. I have live access to your training data — **${workoutHistory.length} sessions logged**, **${streak}-day streak**, and your real nutrition stats.\n\nAsk me anything about your training, nutrition, or recovery.`,
+    content: `Hey ${displayName}! 👋 I'm your AI fitness coach, powered by Groq. I have live access to your training data — **${workoutHistory.length} sessions logged**, **${streak}-day streak**, and your real nutrition stats.\n\nAsk me anything about your training, nutrition, or recovery.`,
     createdAt: null,
   };
 
@@ -212,7 +211,7 @@ export default function AICoach() {
       if (prev[0]?.role === 'assistant' && !prev[0].id) {
         return [{
           ...prev[0],
-          content: `Hey ${displayName}! 👋 I'm your AI fitness coach, powered by Gemini. I have live access to your training data — **${workoutHistory.length} sessions logged**, **${streak}-day streak**, and your real nutrition stats.\n\nAsk me anything.`,
+          content: `Hey ${displayName}! 👋 I'm your AI fitness coach, powered by Groq. I have live access to your training data — **${workoutHistory.length} sessions logged**, **${streak}-day streak**, and your real nutrition stats.\n\nAsk me anything.`,
         }, ...prev.slice(1)];
       }
       return prev;
@@ -251,7 +250,7 @@ export default function AICoach() {
     setMessages(prev => [...prev, { role: 'assistant', content: '', createdAt: new Date() }]);
 
     try {
-      assistantText = await callGemini(historyForAI, systemPrompt, (chunk) => {
+      assistantText = await callGroq(historyForAI, systemPrompt, (chunk) => {
         setMessages(prev => {
           const updated = [...prev];
           updated[updated.length - 1] = {
@@ -267,7 +266,7 @@ export default function AICoach() {
         saveAIMessage(firebaseUser.uid, { role: 'assistant', content: assistantText }).catch(console.error);
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to reach Gemini. Check your API key.');
+      setError(err.message || 'Failed to reach Groq. Check your API key.');
       setMessages(prev => prev.slice(0, -1)); // Remove empty assistant message
     } finally {
       setLoading(false);
@@ -298,7 +297,7 @@ export default function AICoach() {
             <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 16, fontWeight: 800, color: 'var(--txt)' }}>AI Coach</div>
             <div style={{ fontSize: 12, color: 'var(--mint)', display: 'flex', alignItems: 'center', gap: 5 }}>
               <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--mint)', animation: 'pulseDot 2s infinite' }} />
-              {hasKey ? 'Online — Powered by Gemini 2.0 Flash' : 'Demo mode — VITE_GEMINI_API_KEY not set'}
+              {hasKey ? 'Online — Powered by Groq' : 'Demo mode — VITE_GROQ_API_KEY not set'}
             </div>
           </div>
           {messages.filter(m => m.id).length > 0 && (
@@ -366,7 +365,7 @@ export default function AICoach() {
               </svg>
             </button>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 6 }}>Powered by Gemini · Chat history saved across devices · Not medical advice</div>
+          <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 6 }}>Powered by Groq Llama 3 · Chat history saved across devices · Not medical advice</div>
         </div>
       </div>
 
@@ -408,10 +407,10 @@ export default function AICoach() {
         </div>
 
         {/* Badge */}
-        <div style={{ padding: '14px', borderRadius: 12, background: 'linear-gradient(135deg,rgba(66,133,244,0.1),rgba(52,168,83,0.08))', border: '1px solid rgba(66,133,244,0.2)', textAlign: 'center' }}>
+        <div style={{ padding: '14px', borderRadius: 12, background: 'linear-gradient(135deg,rgba(245,80,54,0.1),rgba(245,80,54,0.05))', border: '1px solid rgba(245,80,54,0.2)', textAlign: 'center' }}>
           <div style={{ fontSize: 12, color: 'var(--txt3)', marginBottom: 4 }}>Powered by</div>
-          <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 15, fontWeight: 800, background: 'linear-gradient(90deg,#4285f4,#34a853)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Google Gemini</div>
-          <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 3 }}>gemini-2.0-flash</div>
+          <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 15, fontWeight: 800, background: 'linear-gradient(90deg,#F55036,#fsa084)', WebkitBackgroundClip: 'text', WebkitTextFillColor: '#F55036' }}>Groq</div>
+          <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 3 }}>llama-3.3-70b-versatile</div>
           <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 2 }}>Chat history synced to Firestore</div>
         </div>
       </div>

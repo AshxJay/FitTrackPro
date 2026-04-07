@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { generateHeatmapData } from '../../shared/lib/mockData';
 import type { WorkoutSession } from '../../shared/types';
 
 const COLORS = [
@@ -52,7 +51,8 @@ export default function TrainingHeatmap({ sessions }: Props) {
     if (sessions && sessions.length > 0) {
       return buildHeatmapFromSessions(sessions);
     }
-    return generateHeatmapData();
+    // Return an all-zero heatmap array of size 182 (26 weeks * 7 days) if no real data
+    return new Array(182).fill(0);
   }, [sessions]);
 
   return (

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { generateHeatmapData } from '../../shared/lib/mockData';
+import type { WorkoutSession } from '../../shared/types';
 
 const COLORS = [
   'var(--bg5)',
@@ -9,8 +10,50 @@ const COLORS = [
   'var(--violet)',
 ];
 
-export default function TrainingHeatmap() {
-  const data = useMemo(() => generateHeatmapData(), []);
+function buildHeatmapFromSessions(sessions: WorkoutSession[]): number[] {
+  // Build a set of ISO date strings → intensity (1–4 based on volume)
+  const dateVolume = new Map<string, number>();
+  sessions.forEach(s => {
+    const d = s.completedAt instanceof Date ? s.completedAt : new Date(s.completedAt!);
+    const key = d.toISOString().split('T')[0];
+    const vol = s.totalVolume ?? 0;
+    dateVolume.set(key, (dateVolume.get(key) ?? 0) + vol);
+  });
+
+  const result: number[] = [];
+  const today = new Date();
+  // Build 26 weeks x 7 days = 182 days, oldest first
+  for (let i = 181; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const key = d.toISOString().split('T')[0];
+    const vol = dateVolume.get(key) ?? 0;
+    if (vol === 0) {
+      result.push(0);
+    } else if (vol < 1000) {
+      result.push(1);
+    } else if (vol < 5000) {
+      result.push(2);
+    } else if (vol < 10000) {
+      result.push(3);
+    } else {
+      result.push(4);
+    }
+  }
+  return result;
+}
+
+interface Props {
+  sessions?: WorkoutSession[];
+}
+
+export default function TrainingHeatmap({ sessions }: Props) {
+  const data = useMemo(() => {
+    if (sessions && sessions.length > 0) {
+      return buildHeatmapFromSessions(sessions);
+    }
+    return generateHeatmapData();
+  }, [sessions]);
 
   return (
     <div>

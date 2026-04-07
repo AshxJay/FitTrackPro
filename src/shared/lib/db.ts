@@ -4,7 +4,7 @@ import {
   onSnapshot, serverTimestamp, type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { User, WorkoutSession } from '../types';
+import type { User, WorkoutSession, BodyMetric } from '../types';
 
 // ─── User Profile ─────────────────────────────────────────────────────────────
 
@@ -58,6 +58,61 @@ export async function getWorkoutHistory(uid: string): Promise<WorkoutSession[]> 
       startedAt: data.startedAt?.toDate?.() ?? new Date(),
       completedAt: data.completedAt?.toDate?.() ?? new Date(),
     } as WorkoutSession;
+  });
+}
+
+// ─── Workout History (Real-time) ─────────────────────────────────────────────
+
+export function subscribeToWorkoutHistory(
+  uid: string,
+  cb: (sessions: WorkoutSession[]) => void,
+  count = 30,
+): Unsubscribe {
+  const col = collection(db, 'workouts', uid, 'sessions');
+  const q = query(col, orderBy('completedAt', 'desc'), limit(count));
+  return onSnapshot(q, (snap) => {
+    const sessions: WorkoutSession[] = snap.docs.map(d => {
+      const data = d.data();
+      return {
+        ...data,
+        id: d.id,
+        userId: uid,
+        startedAt: data.startedAt?.toDate?.() ?? new Date(),
+        completedAt: data.completedAt?.toDate?.() ?? new Date(),
+      } as WorkoutSession;
+    });
+    cb(sessions);
+  });
+}
+
+// ─── Body Metrics ─────────────────────────────────────────────────────────────
+
+export async function saveBodyMetric(
+  uid: string,
+  metric: Omit<BodyMetric, never>,
+): Promise<void> {
+  const col = collection(db, 'bodyMetrics', uid, 'entries');
+  await addDoc(col, { ...metric, loggedAt: serverTimestamp() });
+}
+
+export async function getBodyMetrics(uid: string): Promise<BodyMetric[]> {
+  const col = collection(db, 'bodyMetrics', uid, 'entries');
+  const q = query(col, orderBy('loggedAt', 'desc'), limit(52)); // ~1 year weekly
+  const snap = await getDocs(q);
+  return snap.docs.map(d => ({
+    ...d.data(),
+    id: d.id,
+  } as BodyMetric & { id: string }));
+}
+
+export function subscribeToBodyMetrics(
+  uid: string,
+  cb: (metrics: (BodyMetric & { id: string })[]) => void,
+): Unsubscribe {
+  const col = collection(db, 'bodyMetrics', uid, 'entries');
+  const q = query(col, orderBy('loggedAt', 'desc'), limit(52));
+  return onSnapshot(q, snap => {
+    cb(snap.docs.map(d => ({ ...d.data(), id: d.id } as BodyMetric & { id: string })));
   });
 }
 
@@ -120,4 +175,13 @@ export async function updateNutritionMacros(
   } else {
     await updateDoc(ref, data as Record<string, unknown>);
   }
+}
+
+export async function getNutritionDay(
+  uid: string,
+  dateKey: string,
+): Promise<NutritionDay | null> {
+  const ref = doc(db, 'nutrition', uid, 'days', dateKey);
+  const snap = await getDoc(ref);
+  return snap.exists() ? (snap.data() as NutritionDay) : null;
 }

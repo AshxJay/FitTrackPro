@@ -1,27 +1,73 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../shared/stores/appStore';
+import type { WorkoutSession } from '../../shared/types';
+import type { NutritionDay } from '../../shared/lib/db';
 
 const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined;
 
-const SYSTEM_PROMPT = `You are Alex's AI fitness coach on FitTrackPro — an elite, highly knowledgeable fitness assistant. You know everything about Alex Rivera:
-- Age 28, 180cm, 82kg, male
-- Goal: Build muscle (hypertrophy focus)
-- Experience level: Intermediate (3 years training)
-- Current program: Push/Pull/Legs 5-6 days/week
-- Current lifts (estimated 1RM): Bench 103kg, Squat 140kg, Deadlift 175kg, OHP 70kg
-- Protein target: 200g/day, Calorie target: 2800 kcal
-- Training streak: 21 days
-- Equipment: Full commercial gym
-Keep responses concise, practical, and evidence-based. Use specific numbers. Be direct and encouraging.`;
+// Build a dynamic, personalised system prompt from real user data
+function buildSystemPrompt(
+  displayName: string,
+  stats: { height: number; weight: number; age: number; gender: string },
+  todayNutrition: NutritionDay,
+  workoutHistory: WorkoutSession[],
+  streak: number,
+): string {
+  const recentSessions = workoutHistory.slice(0, 5);
+  const sessionSummary = recentSessions.length > 0
+    ? recentSessions.map(s => {
+        const date = s.completedAt instanceof Date ? s.completedAt : new Date(s.completedAt!);
+        const vol = Math.round(s.totalVolume);
+        return `- ${date.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}: ${s.name} (${vol.toLocaleString()} kg total volume, ${Math.round(s.duration / 60)} min)`;
+      }).join('\n')
+    : '- No sessions logged yet';
+
+  // Collect PRs from history
+  const prMap = new Map<string, { weight: number; reps: number; est1rm: number }>();
+  workoutHistory.forEach(s => {
+    (s.prsBreached ?? []).forEach(pr => {
+      const existing = prMap.get(pr.exerciseName);
+      if (!existing || pr.estimatedOneRM > existing.est1rm) {
+        prMap.set(pr.exerciseName, { weight: pr.weight, reps: pr.reps, est1rm: pr.estimatedOneRM });
+      }
+    });
+  });
+  const prSummary = prMap.size > 0
+    ? Array.from(prMap.entries()).map(([name, pr]) => `- ${name}: ${pr.weight}kg × ${pr.reps} (est. 1RM ${pr.est1rm}kg)`).join('\n')
+    : '- No PRs recorded yet';
+
+  return `You are ${displayName}'s AI fitness coach on FitTrackPro — an elite, highly knowledgeable fitness assistant with full access to their real training data.
+
+ATHLETE PROFILE:
+- Name: ${displayName}
+- Age: ${stats.age}, Height: ${stats.height}cm, Weight: ${stats.weight}kg, Gender: ${stats.gender}
+- Current training streak: ${streak} days
+- Experience: Intermediate lifter
+
+TODAY'S NUTRITION (live data):
+- Calories: ${todayNutrition.calories.consumed} / ${todayNutrition.calories.target} kcal (${Math.round((todayNutrition.calories.consumed / todayNutrition.calories.target) * 100)}%)
+- Protein: ${todayNutrition.protein.consumed}g / ${todayNutrition.protein.target}g
+- Carbs: ${todayNutrition.carbs.consumed}g / ${todayNutrition.carbs.target}g
+- Fat: ${todayNutrition.fat.consumed}g / ${todayNutrition.fat.target}g
+- Water: ${todayNutrition.water} / 8 cups
+
+RECENT TRAINING SESSIONS (newest first):
+${sessionSummary}
+
+PERSONAL RECORDS (from logged sessions):
+${prSummary}
+
+Keep responses concise, practical, and evidence-based. Use specific numbers. Reference the athlete's actual data above when giving advice. Be direct and encouraging.`;
+}
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
 const SUGGESTED_PROMPTS = [
-  'Review my last week of training',
-  'Optimize my macro targets',
+  'Review my recent training sessions',
+  'Am I hitting my protein targets?',
   'Should I deload this week?',
   'Best exercises for lagging legs',
-  'How to break my bench press plateau',
+  'How to optimise my nutrition timing',
   'Explain progressive overload for me',
 ];
 
@@ -36,10 +82,49 @@ function TypingDots() {
 }
 
 export default function AICoach() {
-  const { user } = useAppStore();
+  const { user, todayNutrition, workoutHistory } = useAppStore();
+
+  const streak = useMemo(() => {
+    if (!workoutHistory.length) return 0;
+    const daySet = new Set(
+      workoutHistory.map(s => {
+        const d = s.completedAt instanceof Date ? s.completedAt : new Date(s.completedAt!);
+        return d.toISOString().split('T')[0];
+      })
+    );
+    let s = 0;
+    const today = new Date();
+    for (let i = 0; i < 365; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      if (daySet.has(d.toISOString().split('T')[0])) s++;
+      else if (i > 0) break;
+    }
+    return s;
+  }, [workoutHistory]);
+
+  const displayName = user?.displayName ?? 'Athlete';
+
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: `Hey Alex! 👋 I'm your AI coach, powered by Claude. I have full context on your training history, current lifts, and goals.\n\nAsk me anything — from programming questions to nutrition advice, or just tell me how your last session felt. I'm here to help you get stronger. What's on your mind?` },
+    {
+      role: 'assistant',
+      content: `Hey ${displayName}! 👋 I'm your AI fitness coach, powered by Claude. I have full context on your real training data, nutrition intake, and goals.\n\nAsk me anything — from programming questions to nutrition advice, or just tell me how your last session felt. What's on your mind?`,
+    },
   ]);
+
+  // Update the welcome message when real user data loads
+  useEffect(() => {
+    setMessages(prev => {
+      if (prev.length === 1 && prev[0].role === 'assistant') {
+        return [{
+          role: 'assistant',
+          content: `Hey ${displayName}! 👋 I'm your AI fitness coach, powered by Claude. I have full access to your real training data — ${workoutHistory.length} sessions logged, ${streak}-day streak, and your live nutrition targets.\n\nAsk me anything. What's on your mind?`,
+        }];
+      }
+      return prev;
+    });
+  }, [displayName, workoutHistory.length, streak]);
+
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -56,11 +141,19 @@ export default function AICoach() {
     setLoading(true);
     setError('');
 
+    const systemPrompt = buildSystemPrompt(
+      displayName,
+      user?.stats ?? { height: 175, weight: 75, age: 25, gender: 'unknown' },
+      todayNutrition,
+      workoutHistory,
+      streak,
+    );
+
     if (!API_KEY) {
       await new Promise(r => setTimeout(r, 800));
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `I'd love to help, but no API key is configured. To enable real AI responses:\n\n1. Create a **.env** file in your project root\n2. Add: \`VITE_ANTHROPIC_API_KEY=sk-ant-your-key-here\`\n3. Restart the dev server\n\nYou can get your API key at **console.anthropic.com**.\n\nIn the meantime, here's my take based on your question: **${text.trim()}**\n\nBased on your current program (PPL, 5–6 days/week) and intermediate status, focus on progressive overload through small weight increases (2.5kg/session for upper body, 5kg for lower). Your 103kg bench is solid — aim for 110kg by end of this mesocycle.`,
+        content: `I'd love to help with that! To enable real AI responses:\n\n1. Open **.env.local** in your project\n2. Add: \`VITE_ANTHROPIC_API_KEY=sk-ant-your-key-here\`\n3. Restart the dev server\n\nYou can get your API key at **console.anthropic.com**.\n\nFor now, here's my take: Your current streak of **${streak} days** shows great consistency. Based on your nutrition data, you're at **${todayNutrition.protein.consumed}g / ${todayNutrition.protein.target}g protein** today. Keep hitting those targets!`,
       }]);
       setLoading(false);
       return;
@@ -78,7 +171,7 @@ export default function AICoach() {
           'anthropic-dangerous-direct-browser-access': 'true',
           'content-type': 'application/json',
         },
-        body: JSON.stringify({ model: 'claude-3-5-haiku-20241022', max_tokens: 1024, stream: true, system: SYSTEM_PROMPT, messages: history }),
+        body: JSON.stringify({ model: 'claude-3-5-haiku-20241022', max_tokens: 1024, stream: true, system: systemPrompt, messages: history }),
       });
 
       if (!resp.ok) throw new Error(`API error: ${resp.status}`);
@@ -126,10 +219,20 @@ export default function AICoach() {
   };
 
   const formatMsg = (text: string) => {
-    return text.split('\n').map((line, i) => (
-      <span key={i}>{line}{i < text.split('\n').length - 1 && <br />}</span>
-    ));
+    // Render **bold** and simple newlines
+    return text.split('\n').map((line, i, arr) => {
+      const parts = line.split(/\*\*(.*?)\*\*/g);
+      return (
+        <span key={i}>
+          {parts.map((p, j) => j % 2 === 1 ? <strong key={j}>{p}</strong> : p)}
+          {i < arr.length - 1 && <br />}
+        </span>
+      );
+    });
   };
+
+  // Sidebar context values from real data
+  const recentSession = workoutHistory[0];
 
   return (
     <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -137,8 +240,8 @@ export default function AICoach() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--border)' }}>
         {/* Header */}
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'var(--bg4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
-            {user?.displayName ? user.displayName.charAt(0) : 'A'}
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg,var(--violet),#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0, color: '#fff', fontWeight: 700, fontFamily: 'Syne,sans-serif' }}>
+            {displayName.charAt(0).toUpperCase()}
           </div>
           <div style={{ position: 'relative' }}>
             <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
@@ -149,7 +252,7 @@ export default function AICoach() {
           </div>
           <div>
             <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 16, fontWeight: 800, color: 'var(--txt)' }}>AI Coach</div>
-            <div style={{ fontSize: 12, color: 'var(--mint)' }}>● Online — Ready to coach</div>
+            <div style={{ fontSize: 12, color: 'var(--mint)' }}>● Online — Powered by Claude</div>
           </div>
           {!API_KEY && (
             <div style={{ marginLeft: 'auto', padding: '6px 12px', background: 'rgba(245,200,66,0.1)', border: '1px solid rgba(245,200,66,0.3)', borderRadius: 8, fontSize: 11, color: 'var(--gold)', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -176,7 +279,7 @@ export default function AICoach() {
                 {msg.content ? formatMsg(msg.content) : <span style={{ opacity: 0.5, fontStyle: 'italic', fontSize: 12 }}>Thinking…</span>}
               </div>
               {msg.role === 'user' && (
-                <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 4 }}>{user?.displayName ?? 'Athlete'}</div>
+                <div style={{ fontSize: 11, color: 'var(--txt3)', marginTop: 4 }}>{displayName}</div>
               )}
             </div>
           ))}
@@ -221,21 +324,25 @@ export default function AICoach() {
 
       {/* ── Sidebar ── */}
       <div style={{ width: 280, display: 'flex', flexDirection: 'column', gap: 0, overflowY: 'auto', padding: '20px 16px' }}>
-        {/* Today's context */}
+        {/* Live context */}
         <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px', marginBottom: 14 }}>
-          <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 13, fontWeight: 700, color: 'var(--txt)', marginBottom: 12 }}>📊 Today's Context</div>
+          <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 13, fontWeight: 700, color: 'var(--txt)', marginBottom: 12 }}>📊 Live Context</div>
           {[
-            { label: 'Training Streak', val: '21 days 🔥' },
-            { label: 'Protein Today', val: '178g / 200g' },
-            { label: 'Calories', val: '1,618 / 2,800' },
-            { label: 'Last Session', val: 'Push Day A' },
-            { label: 'Next Planned', val: 'Pull Day A' },
+            { label: 'Training Streak', val: `${streak} days 🔥` },
+            { label: 'Protein Today', val: `${todayNutrition.protein.consumed}g / ${todayNutrition.protein.target}g` },
+            { label: 'Calories', val: `${todayNutrition.calories.consumed.toLocaleString()} / ${todayNutrition.calories.target.toLocaleString()}` },
+            { label: 'Last Session', val: recentSession ? recentSession.name : 'None yet' },
+            { label: 'Sessions Logged', val: `${workoutHistory.length} total` },
           ].map(s => (
             <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
               <span style={{ fontSize: 12, color: 'var(--txt3)' }}>{s.label}</span>
               <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--txt)' }}>{s.val}</span>
             </div>
           ))}
+          <div style={{ marginTop: 8, fontSize: 11, color: 'rgba(0,229,160,0.7)', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--mint)', animation: 'pulseDot 2s ease-in-out infinite' }} />
+            Real-time from Firestore
+          </div>
         </div>
 
         {/* Quick prompts */}

@@ -4,6 +4,7 @@ import {
   Tooltip, ResponsiveContainer, ReferenceLine
 } from 'recharts';
 import { bodyWeightHistory } from '../../shared/lib/mockData';
+import { useAppStore } from '../../shared/stores/appStore';
 
 const RANGES = ['4W', '8W', '16W', 'All'] as const;
 type Range = typeof RANGES[number];
@@ -73,16 +74,38 @@ function BFDonut({ bf = 14.2 }: { bf?: number }) {
 }
 
 export default function BodyMetricsTab() {
+  const { bodyMetrics } = useAppStore();
   const [range, setRange] = useState<Range>('All');
 
-  const sliceMap: Record<Range, number> = { '4W': 4, '8W': 8, '16W': 16, All: 999 };
-  const sliced = bodyWeightHistory.weights.slice(-sliceMap[range]);
-  const labels = bodyWeightHistory.labels.slice(-sliceMap[range]);
-  const ma3 = computeMA(sliced, 3);
+  // Build chart data from real Firestore bodyMetrics, falling back to mock
+  const hasRealData = bodyMetrics.length > 0;
 
-  const chartData = useMemo(() => sliced.map((w, i) => ({
-    date: labels[i], weight: w, ma: ma3[i], goal: GOAL_WEIGHT,
-  })), [sliced, labels, ma3]);
+  const sliceMap: Record<Range, number> = { '4W': 4, '8W': 8, '16W': 16, All: 999 };
+
+  const chartData = useMemo(() => {
+    if (hasRealData) {
+      // Real data: sorted oldest→newest, sliced by range
+      const sorted = [...bodyMetrics].reverse(); // Firestore returns newest first
+      const sliced = sorted.slice(-sliceMap[range]);
+      const weights = sliced.map(m => m.weight);
+      const ma3 = computeMA(weights, 3);
+      return sliced.map((m, i) => ({
+        date: m.date,
+        weight: m.weight,
+        ma: ma3[i],
+        goal: GOAL_WEIGHT,
+      }));
+    } else {
+      const sliced = bodyWeightHistory.weights.slice(-sliceMap[range]);
+      const labels = bodyWeightHistory.labels.slice(-sliceMap[range]);
+      const ma3 = computeMA(sliced, 3);
+      return sliced.map((w, i) => ({ date: labels[i], weight: w, ma: ma3[i], goal: GOAL_WEIGHT }));
+    }
+  }, [bodyMetrics, range, hasRealData]);
+
+  const currentWeight = hasRealData ? bodyMetrics[0]?.weight : 82.0;
+  const oldestWeight = hasRealData ? bodyMetrics[bodyMetrics.length - 1]?.weight : 86.2;
+  const change = hasRealData ? currentWeight - oldestWeight : -4.2;
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
@@ -143,14 +166,14 @@ export default function BodyMetricsTab() {
         {/* Current stats row */}
         <div style={{ display: 'flex', gap: 16, marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
           {[
-            { label: 'Current', val: '82.0 kg', delta: null },
-            { label: 'Change (16W)', val: '−4.2 kg', delta: 'down', good: true },
-            { label: 'Weekly Rate', val: '−0.26 kg', delta: 'down', good: true },
-            { label: 'Goal', val: '80.0 kg', delta: null },
-            { label: 'Remaining', val: '2.0 kg', delta: null },
+            { label: 'Current', val: `${currentWeight} kg`, delta: null },
+            { label: hasRealData ? `Change (${bodyMetrics.length}W)` : 'Change (16W)', val: `${change > 0 ? '+' : ''}${change.toFixed(1)} kg`, delta: 'neutral', good: change < 0 },
+            { label: 'Weekly Rate', val: hasRealData && bodyMetrics.length > 1 ? `${(change / bodyMetrics.length).toFixed(2)} kg/wk` : '−0.26 kg', delta: 'down', good: true },
+            { label: 'Goal', val: `${GOAL_WEIGHT} kg`, delta: null },
+            { label: 'Remaining', val: `${Math.max(0, currentWeight - GOAL_WEIGHT).toFixed(1)} kg`, delta: null },
           ].map(s => (
             <div key={s.label} style={{ flex: 1, textAlign: 'center', padding: '10px', background: 'var(--bg3)', borderRadius: 10 }}>
-              <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 15, fontWeight: 700, color: s.delta ? (s.good ? 'var(--mint)' : 'var(--red)') : 'var(--txt)', marginBottom: 3 }}>{s.val}</div>
+              <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 15, fontWeight: 700, color: s.delta && s.delta !== 'neutral' ? (s.good ? 'var(--mint)' : 'var(--red)') : 'var(--txt)', marginBottom: 3 }}>{s.val}</div>
               <div style={{ fontSize: 11, color: 'var(--txt3)' }}>{s.label}</div>
             </div>
           ))}

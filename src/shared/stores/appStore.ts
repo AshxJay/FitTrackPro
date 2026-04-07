@@ -7,16 +7,20 @@ import {
   signOut,
   onAuthStateChanged,
   updateProfile,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import {
-  getUserProfile, createUserProfile,
+  getUserProfile, createUserProfile, updateUserProfile,
   subscribeToTodayNutrition, updateWaterIntake,
+  subscribeToWorkoutHistory, subscribeToBodyMetrics,
   type NutritionDay, DEFAULT_NUTRITION,
 } from '../lib/db';
 import { weeklyStats } from '../lib/mockData';
-import type { User } from '../types';
+import type { User, WorkoutSession, BodyMetric } from '../types';
 
 interface AuthError { message: string }
 
@@ -29,8 +33,10 @@ interface AppStore {
   commandPaletteOpen: boolean;
   weeklyStats: typeof weeklyStats;
   todayNutrition: NutritionDay;
+  workoutHistory: WorkoutSession[];
+  bodyMetrics: BodyMetric[];
   isAuthenticated: boolean;
-  authLoading: boolean;   // true while Firebase resolves the session
+  authLoading: boolean;
   authError: string | null;
 
   // Auth actions
@@ -49,10 +55,16 @@ interface AppStore {
   setFirebaseUser: (u: FirebaseUser | null) => void;
   setTodayNutrition: (n: NutritionDay) => void;
   setAuthLoading: (v: boolean) => void;
+  setWorkoutHistory: (s: WorkoutSession[]) => void;
+  setBodyMetrics: (m: BodyMetric[]) => void;
+  updateUserProfile: (data: Partial<User>) => Promise<void>;
+  changePassword: (currentPw: string, newPw: string) => Promise<void>;
 }
 
-// Unsubscribe handle for the Firestore nutrition listener
+// Unsubscribe handles
 let nutritionUnsub: (() => void) | null = null;
+let workoutHistoryUnsub: (() => void) | null = null;
+let bodyMetricsUnsub: (() => void) | null = null;
 
 function mapFirebaseUserToUser(fu: FirebaseUser): User {
   return {
@@ -81,6 +93,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   commandPaletteOpen: false,
   weeklyStats,
   todayNutrition: DEFAULT_NUTRITION,
+  workoutHistory: [],
+  bodyMetrics: [],
   isAuthenticated: false,
   authLoading: true,
   authError: null,
@@ -180,14 +194,36 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setFirebaseUser: (u) => set({ firebaseUser: u }),
   setTodayNutrition: (n) => set({ todayNutrition: n }),
   setAuthLoading: (v) => set({ authLoading: v }),
+  setWorkoutHistory: (s) => set({ workoutHistory: s }),
+  setBodyMetrics: (m) => set({ bodyMetrics: m }),
+
+  updateUserProfile: async (data) => {
+    const { firebaseUser, user } = get();
+    if (!firebaseUser || !user) return;
+    // Update Firebase Auth displayName if changed
+    if (data.displayName && data.displayName !== firebaseUser.displayName) {
+      await updateProfile(firebaseUser, { displayName: data.displayName });
+    }
+    // Update Firestore
+    await updateUserProfile(firebaseUser.uid, data);
+    // Update local state
+    set(s => ({ user: s.user ? { ...s.user, ...data } : null }));
+  },
+
+  changePassword: async (currentPw, newPw) => {
+    const { firebaseUser } = get();
+    if (!firebaseUser?.email) throw new Error('No authenticated user');
+    const cred = EmailAuthProvider.credential(firebaseUser.email, currentPw);
+    await reauthenticateWithCredential(firebaseUser, cred);
+    await updatePassword(firebaseUser, newPw);
+  },
 }));
 
 // ── Firebase Auth Listener (singleton, runs once on module load) ─────────────
 onAuthStateChanged(auth, async (firebaseUser) => {
-  const { setUser, setFirebaseUser, setTodayNutrition } = useAppStore.getState();
+  const { setUser, setFirebaseUser, setTodayNutrition, setWorkoutHistory, setBodyMetrics } = useAppStore.getState();
 
   if (firebaseUser) {
-    // Fetch or build user profile
     let profile = await getUserProfile(firebaseUser.uid);
     if (!profile) {
       profile = mapFirebaseUserToUser(firebaseUser);
@@ -200,6 +236,18 @@ onAuthStateChanged(auth, async (firebaseUser) => {
       setTodayNutrition(data);
     });
 
+    // Subscribe to workout history (real-time)
+    workoutHistoryUnsub?.();
+    workoutHistoryUnsub = subscribeToWorkoutHistory(firebaseUser.uid, (sessions) => {
+      setWorkoutHistory(sessions);
+    });
+
+    // Subscribe to body metrics (real-time)
+    bodyMetricsUnsub?.();
+    bodyMetricsUnsub = subscribeToBodyMetrics(firebaseUser.uid, (metrics) => {
+      setBodyMetrics(metrics);
+    });
+
     useAppStore.setState({
       firebaseUser,
       user: profile,
@@ -209,9 +257,15 @@ onAuthStateChanged(auth, async (firebaseUser) => {
     });
   } else {
     nutritionUnsub?.();
+    workoutHistoryUnsub?.();
+    bodyMetricsUnsub?.();
     nutritionUnsub = null;
+    workoutHistoryUnsub = null;
+    bodyMetricsUnsub = null;
     setFirebaseUser(null);
     setUser(null);
+    setWorkoutHistory([]);
+    setBodyMetrics([]);
     useAppStore.setState({ isAuthenticated: false, authLoading: false });
   }
 });

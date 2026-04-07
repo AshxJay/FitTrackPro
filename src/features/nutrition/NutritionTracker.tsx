@@ -1,4 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useAppStore } from '../../shared/stores/appStore';
+import { updateNutritionMacros, getNutritionDay, DEFAULT_NUTRITION, type NutritionDay } from '../../shared/lib/db';
 
 // ── Food Database ──────────────────────────────────────────────
 const FOOD_DB = [
@@ -26,14 +28,13 @@ type MealId = 'Breakfast' | 'Lunch' | 'Dinner' | 'Snacks';
 interface FoodRow { id: string; name: string; qty: number; cal: number; p: number; c: number; f: number; }
 interface MealData { items: FoodRow[]; open: boolean; }
 
-const INITIAL_MEALS: Record<MealId, MealData> = {
-  Breakfast: { open: true,  items: [{ id: 'i1', name: 'Oat Porridge', qty: 1, cal: 389, p: 17, c: 66, f: 7 }, { id: 'i2', name: 'Whey Protein', qty: 1, cal: 120, p: 24, c: 3, f: 1.5 }, { id: 'i3', name: 'Banana', qty: 1, cal: 105, p: 1.3, c: 27, f: 0.4 }] },
-  Lunch:     { open: true,  items: [{ id: 'i4', name: 'Chicken Breast', qty: 2, cal: 330, p: 62, c: 0, f: 7.2 }, { id: 'i5', name: 'Brown Rice', qty: 1.5, cal: 323, p: 7.5, c: 67.5, f: 3 }, { id: 'i6', name: 'Broccoli', qty: 1, cal: 34, p: 2.8, c: 7, f: 0.4 }] },
-  Dinner:    { open: false, items: [{ id: 'i7', name: 'Salmon', qty: 1.5, cal: 312, p: 30, c: 0, f: 19.5 }, { id: 'i8', name: 'Sweet Potato', qty: 2, cal: 172, p: 3.2, c: 40, f: 0.2 }] },
-  Snacks:    { open: false, items: [{ id: 'i9', name: 'Greek Yogurt', qty: 1, cal: 90, p: 15, c: 6, f: 0.4 }, { id: 'i10', name: 'Almonds', qty: 1, cal: 173, p: 6, c: 6, f: 15 }] },
+const EMPTY_MEALS: Record<MealId, MealData> = {
+  Breakfast: { open: true,  items: [] },
+  Lunch:     { open: true,  items: [] },
+  Dinner:    { open: false, items: [] },
+  Snacks:    { open: false, items: [] },
 };
 
-const TARGETS = { cal: 2800, p: 200, c: 280, f: 78 };
 const MEAL_EMOJIS: Record<MealId, string> = { Breakfast: '🌅', Lunch: '☀️', Dinner: '🌙', Snacks: '🍎' };
 const MEAL_COLORS: Record<MealId, string> = { Breakfast: 'var(--violet)', Lunch: 'var(--mint)', Dinner: 'var(--orange)', Snacks: 'var(--gold)' };
 
@@ -90,11 +91,18 @@ function WaterCups({ cups, onAdd }: { cups: number; onAdd: () => void }) {
   );
 }
 
+function dateKey(offset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return d.toISOString().split('T')[0];
+}
+
 export default function NutritionTracker() {
+  const { todayNutrition, firebaseUser, incrementWater } = useAppStore();
   const today = new Date();
   const [dateOffset, setDateOffset] = useState(0);
-  const [meals, setMeals] = useState(INITIAL_MEALS);
-  const [water, setWater] = useState(5);
+  const [meals, setMeals] = useState<Record<MealId, MealData>>(EMPTY_MEALS);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [searchModal, setSearchModal] = useState<MealId | null>(null);
   const [searchQ, setSearchQ] = useState('');
   const [qty, setQty] = useState(1);
@@ -102,23 +110,90 @@ export default function NutritionTracker() {
   const currentDate = new Date(today);
   currentDate.setDate(today.getDate() + dateOffset);
   const dateStr = currentDate.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+  const isToday = dateOffset === 0;
+
+  // Load historical day data when date changes
+  useEffect(() => {
+    setMeals(EMPTY_MEALS);
+    if (!isToday || !firebaseUser) return;
+    // Today's data is managed by todayNutrition store — meals are UI-local for now
+  }, [dateOffset, firebaseUser, isToday]);
+
+  useEffect(() => {
+    if (!isToday || dateOffset === 0) return;
+    if (!firebaseUser) return;
+    setHistoryLoading(true);
+    getNutritionDay(firebaseUser.uid, dateKey(dateOffset))
+      .then(data => {
+        if (data) {
+          // Data is summary — keep meals empty for historical view
+        }
+      })
+      .finally(() => setHistoryLoading(false));
+  }, [dateOffset, firebaseUser, isToday]);
+
+  // Use today's Firestore-synced nutrition for display when viewing today
+  const displayNutrition: NutritionDay = isToday ? todayNutrition : DEFAULT_NUTRITION;
 
   const totals = useMemo(() => {
     let cal = 0, p = 0, c = 0, f = 0;
     Object.values(meals).forEach(m => m.items.forEach(i => { cal += i.cal * i.qty; p += i.p * i.qty; c += i.c * i.qty; f += i.f * i.qty; }));
+    // For today, also add the totals stored in Firestore (from todayNutrition)
+    if (isToday) {
+      return {
+        cal: Math.max(Math.round(cal), displayNutrition.calories.consumed),
+        p: Math.max(Math.round(p), displayNutrition.protein.consumed),
+        c: Math.max(Math.round(c), displayNutrition.carbs.consumed),
+        f: Math.max(Math.round(f), displayNutrition.fat.consumed),
+      };
+    }
     return { cal: Math.round(cal), p: Math.round(p), c: Math.round(c), f: Math.round(f) };
-  }, [meals]);
+  }, [meals, displayNutrition, isToday]);
 
-  const removeItem = (meal: MealId, id: string) =>
+  const TARGETS = {
+    cal: displayNutrition.calories.target,
+    p: displayNutrition.protein.target,
+    c: displayNutrition.carbs.target,
+    f: displayNutrition.fat.target,
+  };
+
+  const removeItem = (meal: MealId, id: string) => {
     setMeals(prev => ({ ...prev, [meal]: { ...prev[meal], items: prev[meal].items.filter(i => i.id !== id) } }));
+  };
 
-  const toggleMeal = (meal: MealId) =>
-    setMeals(prev => ({ ...prev, [meal]: { ...prev[meal], open: !prev[meal].open } }));
+  const toggleMeal = (meal: MealId) => setMeals(prev => ({ ...prev, [meal]: { ...prev[meal], open: !prev[meal].open } }));
 
-  const addFood = (meal: MealId, food: typeof FOOD_DB[0]) => {
-    const newItem: FoodRow = { id: `${Date.now()}`, name: food.name, qty, cal: Math.round(food.cal * qty), p: Math.round(food.p * qty * 10) / 10, c: Math.round(food.c * qty * 10) / 10, f: Math.round(food.f * qty * 10) / 10 };
-    setMeals(prev => ({ ...prev, [meal]: { ...prev[meal], items: [...prev[meal].items, newItem] } }));
+  const addFood = async (meal: MealId, food: typeof FOOD_DB[0]) => {
+    const newItem: FoodRow = {
+      id: `${Date.now()}`,
+      name: food.name, qty,
+      cal: Math.round(food.cal * qty),
+      p: Math.round(food.p * qty * 10) / 10,
+      c: Math.round(food.c * qty * 10) / 10,
+      f: Math.round(food.f * qty * 10) / 10,
+    };
+    const updatedMeals = { ...meals, [meal]: { ...meals[meal], items: [...meals[meal].items, newItem] } };
+    setMeals(updatedMeals);
     setSearchModal(null); setSearchQ(''); setQty(1);
+
+    // Persist updated macro totals to Firestore for today
+    if (isToday && firebaseUser) {
+      let cal = 0, p = 0, c = 0, f = 0;
+      Object.values(updatedMeals).forEach(m => m.items.forEach(i => { cal += i.cal * i.qty; p += i.p * i.qty; c += i.c * i.qty; f += i.f * i.qty; }));
+      const base = displayNutrition;
+      await updateNutritionMacros(firebaseUser.uid, {
+        calories: { consumed: Math.round(base.calories.consumed + cal), target: base.calories.target },
+        protein:  { consumed: Math.round(base.protein.consumed + p),   target: base.protein.target },
+        carbs:    { consumed: Math.round(base.carbs.consumed + c),     target: base.carbs.target },
+        fat:      { consumed: Math.round(base.fat.consumed + f),       target: base.fat.target },
+      });
+    }
+  };
+
+  const handleWater = async () => {
+    if (isToday) {
+      await incrementWater();
+    }
   };
 
   const filtered = FOOD_DB.filter(f => f.name.toLowerCase().includes(searchQ.toLowerCase()));
@@ -132,7 +207,6 @@ export default function NutritionTracker() {
           <h1 style={{ fontFamily: 'Syne,sans-serif', fontSize: 26, fontWeight: 800, color: 'var(--txt)', margin: '0 0 4px' }}>Nutrition Tracker</h1>
           <p style={{ fontSize: 13, color: 'var(--txt3)', margin: 0 }}>Track your daily intake and hit your macro targets</p>
         </div>
-        {/* Date nav */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 12, padding: '8px 14px' }}>
           <button onClick={() => setDateOffset(d => d - 1)} style={{ background: 'none', border: 'none', color: 'var(--txt2)', cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center' }}>‹</button>
           <span style={{ fontFamily: 'Syne,sans-serif', fontSize: 13, fontWeight: 700, color: 'var(--txt)', minWidth: 160, textAlign: 'center' }}>
@@ -143,86 +217,92 @@ export default function NutritionTracker() {
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 32 }}>
-        {/* Summary Row: Donut + Macros + Water */}
-        <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 16, marginBottom: 20 }}>
-          {/* Calorie donut */}
-          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <CalDonut consumed={totals.cal} target={TARGETS.cal} />
-            <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 14, fontWeight: 800, color: remaining > 0 ? 'var(--mint)' : 'var(--orange)' }}>{Math.abs(remaining)}</div>
-                <div style={{ fontSize: 10, color: 'var(--txt3)' }}>{remaining > 0 ? 'remaining' : 'over'}</div>
-              </div>
-            </div>
+        {historyLoading ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: 'var(--txt3)', fontSize: 14 }}>
+            Loading nutrition data…
           </div>
-
-          {/* Macros + Water */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: '20px 24px', flex: 1 }}>
-              <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 14, fontWeight: 700, color: 'var(--txt)', marginBottom: 16 }}>Macronutrients</div>
-              <div style={{ display: 'flex', gap: 20 }}>
-                <MacroBar label="Protein" cur={totals.p} target={TARGETS.p} color="var(--violet2)" />
-                <MacroBar label="Carbs" cur={totals.c} target={TARGETS.c} color="var(--mint)" />
-                <MacroBar label="Fat" cur={totals.f} target={TARGETS.f} color="var(--gold)" />
-              </div>
-            </div>
-            <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ fontFamily: 'Syne,sans-serif', fontSize: 14, fontWeight: 700, color: 'var(--txt)' }}>💧 Water Intake</span>
-                <span style={{ fontSize: 12, color: 'var(--txt3)' }}>{water} of 8 cups</span>
-              </div>
-              <WaterCups cups={water} onAdd={() => setWater(w => Math.min(w + 1, 8))} />
-            </div>
-          </div>
-        </div>
-
-        {/* Meal Cards */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {(Object.keys(meals) as MealId[]).map(mealId => {
-            const meal = meals[mealId];
-            const mealTotals = meal.items.reduce((acc, i) => ({ cal: acc.cal + i.cal, p: acc.p + i.p, c: acc.c + i.c }), { cal: 0, p: 0, c: 0 });
-            return (
-              <div key={mealId} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
-                {/* Meal header */}
-                <div onClick={() => toggleMeal(mealId)} style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', cursor: 'pointer', borderLeft: `4px solid ${MEAL_COLORS[mealId]}` }}>
-                  <span style={{ fontSize: 20, marginRight: 10 }}>{MEAL_EMOJIS[mealId]}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 15, fontWeight: 700, color: 'var(--txt)' }}>{mealId}</div>
-                    <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 2 }}>
-                      {mealTotals.cal} kcal · {mealTotals.p}g protein · {mealTotals.c}g carbs
-                    </div>
+        ) : (
+          <>
+            {/* Summary Row */}
+            <div style={{ display: 'grid', gridTemplateColumns: '200px 1fr', gap: 16, marginBottom: 20 }}>
+              <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <CalDonut consumed={totals.cal} target={TARGETS.cal} />
+                <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 14, fontWeight: 800, color: remaining > 0 ? 'var(--mint)' : 'var(--orange)' }}>{Math.abs(remaining)}</div>
+                    <div style={{ fontSize: 10, color: 'var(--txt3)' }}>{remaining > 0 ? 'remaining' : 'over'}</div>
                   </div>
-                  <button
-                    onClick={e => { e.stopPropagation(); setSearchModal(mealId); }}
-                    style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: `${MEAL_COLORS[mealId]}22`, color: MEAL_COLORS[mealId], fontSize: 13, fontWeight: 700, marginRight: 12 }}
-                  >+ Add</button>
-                  <span style={{ fontSize: 20, color: 'var(--txt3)', transition: 'transform 0.2s', transform: meal.open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▾</span>
                 </div>
+              </div>
 
-                {/* Food items */}
-                {meal.open && (
-                  <div style={{ borderTop: '1px solid var(--border)' }}>
-                    {meal.items.length === 0 ? (
-                      <div style={{ padding: '20px', textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>No food logged yet. Click + Add to get started.</div>
-                    ) : (
-                      meal.items.map(item => (
-                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 20px', borderBottom: '1px solid rgba(255,255,255,0.04)', gap: 12 }}>
-                          <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--txt)' }}>{item.name}</div>
-                          <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
-                            <span style={{ color: 'var(--txt2)' }}><strong style={{ color: 'var(--txt)' }}>{item.cal}</strong> kcal</span>
-                            <span style={{ color: 'var(--violet2)' }}>{item.p}g P</span>
-                            <span style={{ color: 'var(--mint)' }}>{item.c}g C</span>
-                          </div>
-                          <button onClick={() => removeItem(mealId, item.id)} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', padding: '4px', borderRadius: 6, transition: 'color 0.2s' }} onMouseEnter={e => (e.currentTarget.style.color = 'var(--red)')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--txt3)')}>×</button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: '20px 24px', flex: 1 }}>
+                  <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 14, fontWeight: 700, color: 'var(--txt)', marginBottom: 16 }}>Macronutrients</div>
+                  <div style={{ display: 'flex', gap: 20 }}>
+                    <MacroBar label="Protein" cur={totals.p} target={TARGETS.p} color="var(--violet2)" />
+                    <MacroBar label="Carbs"   cur={totals.c} target={TARGETS.c} color="var(--mint)" />
+                    <MacroBar label="Fat"     cur={totals.f} target={TARGETS.f} color="var(--gold)" />
+                  </div>
+                </div>
+                <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, padding: '16px 24px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                    <span style={{ fontFamily: 'Syne,sans-serif', fontSize: 14, fontWeight: 700, color: 'var(--txt)' }}>💧 Water Intake</span>
+                    <span style={{ fontSize: 12, color: 'var(--txt3)' }}>{isToday ? displayNutrition.water : 0} of 8 cups</span>
+                  </div>
+                  <WaterCups cups={isToday ? displayNutrition.water : 0} onAdd={handleWater} />
+                </div>
+              </div>
+            </div>
+
+            {/* Meal Cards */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {(Object.keys(meals) as MealId[]).map(mealId => {
+                const meal = meals[mealId];
+                const mealTotals = meal.items.reduce((acc, i) => ({ cal: acc.cal + i.cal, p: acc.p + i.p, c: acc.c + i.c }), { cal: 0, p: 0, c: 0 });
+                return (
+                  <div key={mealId} style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden' }}>
+                    <div onClick={() => toggleMeal(mealId)} style={{ display: 'flex', alignItems: 'center', padding: '16px 20px', cursor: 'pointer', borderLeft: `4px solid ${MEAL_COLORS[mealId]}` }}>
+                      <span style={{ fontSize: 20, marginRight: 10 }}>{MEAL_EMOJIS[mealId]}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: 'Syne,sans-serif', fontSize: 15, fontWeight: 700, color: 'var(--txt)' }}>{mealId}</div>
+                        <div style={{ fontSize: 12, color: 'var(--txt3)', marginTop: 2 }}>
+                          {mealTotals.cal} kcal · {mealTotals.p}g protein · {mealTotals.c}g carbs
                         </div>
-                      ))
+                      </div>
+                      <button
+                        onClick={e => { e.stopPropagation(); if (isToday) setSearchModal(mealId); }}
+                        style={{ padding: '6px 14px', borderRadius: 8, border: 'none', cursor: isToday ? 'pointer' : 'not-allowed', background: `${MEAL_COLORS[mealId]}22`, color: isToday ? MEAL_COLORS[mealId] : 'var(--txt3)', fontSize: 13, fontWeight: 700, marginRight: 12, opacity: isToday ? 1 : 0.4 }}
+                      >+ Add</button>
+                      <span style={{ fontSize: 20, color: 'var(--txt3)', transition: 'transform 0.2s', transform: meal.open ? 'rotate(0deg)' : 'rotate(-90deg)' }}>▾</span>
+                    </div>
+
+                    {meal.open && (
+                      <div style={{ borderTop: '1px solid var(--border)' }}>
+                        {meal.items.length === 0 ? (
+                          <div style={{ padding: '20px', textAlign: 'center', color: 'var(--txt3)', fontSize: 13 }}>
+                            {isToday ? 'No food logged yet. Click + Add to get started.' : 'No data for this day.'}
+                          </div>
+                        ) : (
+                          meal.items.map(item => (
+                            <div key={item.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 20px', borderBottom: '1px solid rgba(255,255,255,0.04)', gap: 12 }}>
+                              <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--txt)' }}>{item.name}</div>
+                              <div style={{ display: 'flex', gap: 16, fontSize: 12 }}>
+                                <span style={{ color: 'var(--txt2)' }}><strong style={{ color: 'var(--txt)' }}>{item.cal}</strong> kcal</span>
+                                <span style={{ color: 'var(--violet2)' }}>{item.p}g P</span>
+                                <span style={{ color: 'var(--mint)' }}>{item.c}g C</span>
+                              </div>
+                              <button onClick={() => removeItem(mealId, item.id)} style={{ background: 'none', border: 'none', color: 'var(--txt3)', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', padding: '4px', borderRadius: 6, transition: 'color 0.2s' }} onMouseEnter={e => (e.currentTarget.style.color = 'var(--red)')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--txt3)')}>×</button>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Food Search Modal */}
@@ -234,7 +314,7 @@ export default function NutritionTracker() {
               <input
                 autoFocus value={searchQ} onChange={e => setSearchQ(e.target.value)}
                 placeholder="Search foods… (e.g. chicken, oats, protein)"
-                style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border2)', background: 'var(--bg3)', color: 'var(--txt)', fontSize: 14, fontFamily: 'DM Sans,sans-serif', outline: 'none' }}
+                style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border2)', background: 'var(--bg3)', color: 'var(--txt)', fontSize: 14, fontFamily: 'DM Sans,sans-serif', outline: 'none', boxSizing: 'border-box' }}
               />
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
                 <span style={{ fontSize: 12, color: 'var(--txt3)', flexShrink: 0 }}>Quantity (servings):</span>

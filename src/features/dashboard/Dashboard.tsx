@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import StatCard from '../../shared/components/StatCard';
 import StrengthChart from './StrengthChart';
 import TrainingHeatmap from './TrainingHeatmap';
@@ -5,14 +6,82 @@ import TodayWorkoutCard from './TodayWorkoutCard';
 import WeekScheduleCard from './WeekScheduleCard';
 import NutritionCard from './NutritionCard';
 import AICoachCard from './AICoachCard';
-import { weeklyStats, mockPRs } from '../../shared/lib/mockData';
+import { useAppStore } from '../../shared/stores/appStore';
+import { mockPRs } from '../../shared/lib/mockData';
 import { pct } from '../../shared/lib/utils';
+import type { WorkoutSession } from '../../shared/types';
 
 const fadeUpStyle = (delay: number): React.CSSProperties => ({
   animation: `fadeUp 0.5s ${delay}ms ease both`,
 });
 
+function computeStreak(sessions: WorkoutSession[]): number {
+  if (!sessions.length) return 0;
+  const daySet = new Set(
+    sessions.map(s => {
+      const d = s.completedAt instanceof Date ? s.completedAt : new Date(s.completedAt!);
+      return d.toISOString().split('T')[0];
+    })
+  );
+  let streak = 0;
+  const today = new Date();
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const key = d.toISOString().split('T')[0];
+    if (daySet.has(key)) {
+      streak++;
+    } else if (i > 0) {
+      break;
+    }
+  }
+  return streak;
+}
+
+function computeWeeklyVolume(sessions: WorkoutSession[]): number {
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  return sessions
+    .filter(s => {
+      const d = s.completedAt instanceof Date ? s.completedAt : new Date(s.completedAt!);
+      return d >= weekAgo;
+    })
+    .reduce((total, s) =>
+      total + s.exercises.reduce((v, ex) =>
+        v + ex.sets.reduce((sv, st) =>
+          sv + (st.completed ? st.weight * st.reps : 0), 0), 0), 0);
+}
+
+function computeMonthlyPRs(sessions: WorkoutSession[]): { count: number; prs: typeof mockPRs } {
+  const monthAgo = new Date();
+  monthAgo.setDate(monthAgo.getDate() - 30);
+  const recent = sessions.filter(s => {
+    const d = s.completedAt instanceof Date ? s.completedAt : new Date(s.completedAt!);
+    return d >= monthAgo;
+  });
+  const allPRs = recent.flatMap(s => s.prsBreached ?? []);
+  // Deduplicate by exerciseId, keep highest
+  const map = new Map<string, typeof mockPRs[0]>();
+  allPRs.forEach(pr => {
+    const existing = map.get(pr.exerciseId);
+    if (!existing || pr.estimatedOneRM > existing.estimatedOneRM) map.set(pr.exerciseId, pr);
+  });
+  return { count: map.size, prs: Array.from(map.values()) };
+}
+
 export default function Dashboard() {
+  const { workoutHistory, todayNutrition, weeklyStats } = useAppStore();
+
+  const streak = useMemo(() => computeStreak(workoutHistory), [workoutHistory]);
+  const weeklyVolume = useMemo(() => computeWeeklyVolume(workoutHistory), [workoutHistory]);
+  const { count: prsThisMonth, prs: recentPRs } = useMemo(() => computeMonthlyPRs(workoutHistory), [workoutHistory]);
+
+  // Fallback to mock data if no real data yet
+  const displayStreak = workoutHistory.length > 0 ? streak : weeklyStats.streak;
+  const displayVolume = workoutHistory.length > 0 ? weeklyVolume : weeklyStats.weeklyVolume;
+  const displayPRs = workoutHistory.length > 0 ? prsThisMonth : weeklyStats.prsThisMonth;
+  const displayPRList = recentPRs.length > 0 ? recentPRs : mockPRs;
+
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 20, background: 'var(--bg)' }}>
 
@@ -25,16 +94,20 @@ export default function Dashboard() {
         <div style={{ fontSize: 28, flexShrink: 0 }}>🏆</div>
         <div style={{ flex: 1 }}>
           <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 14, fontWeight: 800, color: 'var(--gold)' }}>
-            {mockPRs.length} New Personal Records This Week
+            {displayPRList.length} Personal Record{displayPRList.length !== 1 ? 's' : ''} {workoutHistory.length > 0 ? 'This Month' : 'This Week'}
           </div>
-          <div style={{ fontSize: 12, color: 'var(--txt2)', marginTop: 2 }}>You're in peak form — keep pushing.</div>
-          <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
-            {mockPRs.map(pr => (
-              <div key={pr.exerciseId} style={{ padding: '4px 10px', background: 'rgba(245,200,66,0.1)', border: '1px solid rgba(245,200,66,0.2)', borderRadius: 6, fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'var(--gold)' }}>
-                {pr.exerciseName} {pr.weight}kg × {pr.reps}
-              </div>
-            ))}
+          <div style={{ fontSize: 12, color: 'var(--txt2)', marginTop: 2 }}>
+            {displayPRList.length > 0 ? "You're in peak form — keep pushing." : "Log workouts to start tracking PRs."}
           </div>
+          {displayPRList.length > 0 && (
+            <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+              {displayPRList.map(pr => (
+                <div key={pr.exerciseId} style={{ padding: '4px 10px', background: 'rgba(245,200,66,0.1)', border: '1px solid rgba(245,200,66,0.2)', borderRadius: 6, fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'var(--gold)' }}>
+                  {pr.exerciseName} {pr.weight}kg × {pr.reps}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(245,200,66,0.5)" strokeWidth="2" strokeLinecap="round"><path d="m9 18 6-6-6-6" /></svg>
       </div>
@@ -47,17 +120,19 @@ export default function Dashboard() {
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="#ff6b35"><path d="M12 2c0 0-7 6-7 12a7 7 0 0 0 14 0c0-6-7-12-7-12z"/></svg>}
         />
         <StatCard
-          label="Weekly Volume" value={weeklyStats.weeklyVolume} subLabel="kg total lifted" trend="8.3%" trendUp
+          label="Weekly Volume" value={`${Math.round(displayVolume).toLocaleString()} kg`} subLabel="total lifted this week"
+          trend={workoutHistory.length > 0 ? undefined : "8.3%"} trendUp
           color="violet" animDelay={300}
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9b7ffe" strokeWidth="2.2" strokeLinecap="round"><path d="M6 12h4m4 0h4M10 12V8m4 4v4"/><rect x="2" y="10" width="4" height="4" rx="1"/><rect x="18" y="10" width="4" height="4" rx="1"/></svg>}
         />
         <StatCard
-          label="Current Streak" value={weeklyStats.streak} subLabel={`days in a row 🔥  Personal best: ${weeklyStats.streakBest}`}
+          label="Current Streak" value={displayStreak} subLabel={`days in a row 🔥`}
           color="mint" animDelay={400}
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="#00e5a0"><path d="M12 2c0 0-6 5-6 11a6 6 0 0 0 12 0C18 7 12 2 12 2z"/></svg>}
         />
         <StatCard
-          label="PRs This Month" value={weeklyStats.prsThisMonth} subLabel={`Last month: ${weeklyStats.prsLastMonth}`} trend="60%" trendUp
+          label="PRs This Month" value={displayPRs} subLabel={`Last month: ${weeklyStats.prsLastMonth}`}
+          trend={workoutHistory.length > 0 ? undefined : "60%"} trendUp
           color="gold" animDelay={500}
           icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="#f5c842"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>}
         />
@@ -72,7 +147,7 @@ export default function Dashboard() {
             onMouseEnter={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border2)'}
             onMouseLeave={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'var(--border)'}
           >
-            <TrainingHeatmap />
+            <TrainingHeatmap sessions={workoutHistory} />
           </div>
         </div>
 

@@ -1,9 +1,7 @@
 import { useAppStore } from '../../shared/stores/appStore';
-import { useNavigate } from 'react-router-dom';
 
 export default function TodayWorkoutCard() {
-  const { workoutHistory } = useAppStore();
-  const navigate = useNavigate();
+  const { workoutHistory, setActiveTab } = useAppStore();
 
   const today = new Date().toISOString().split('T')[0];
   const todayWorkout = workoutHistory.find(w => {
@@ -58,7 +56,7 @@ export default function TodayWorkoutCard() {
 
       {!todayWorkout && (
         <button
-          onClick={() => navigate('/workout')}
+          onClick={() => setActiveTab('log')}
           style={{ width: '100%', padding: 13, background: 'linear-gradient(135deg,var(--violet),#a855f7)', border: 'none', borderRadius: 10, color: '#fff', fontFamily: 'Syne, sans-serif', fontSize: 14, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', letterSpacing: '0.2px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
           onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 8px 30px rgba(124,92,252,0.4)'; }}
           onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none'; }}

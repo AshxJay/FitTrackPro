@@ -1,7 +1,7 @@
-import { useNavigate } from 'react-router-dom';
+import { useAppStore } from '../../shared/stores/appStore';
 
 export default function WeekScheduleCard() {
-  const navigate = useNavigate();
+  const { setActiveTab } = useAppStore();
 
   return (
     <div
@@ -25,7 +25,7 @@ export default function WeekScheduleCard() {
       </div>
       
       <button
-        onClick={() => navigate('/workout')}
+        onClick={() => setActiveTab('log')}
         style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--txt2)', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'Syne, sans-serif' }}
       >
         Setup Split

@@ -1,7 +1,7 @@
-import { useNavigate } from 'react-router-dom';
+import { useAppStore } from '../../shared/stores/appStore';
 
 export default function AICoachCard() {
-  const navigate = useNavigate();
+  const { setActiveTab } = useAppStore();
 
   return (
     <div
@@ -32,7 +32,7 @@ export default function AICoachCard() {
 
       {/* Chat CTA */}
       <button
-        onClick={() => navigate('/coach')}
+        onClick={() => setActiveTab('ai-coach')}
         style={{ width: '100%', padding: 10, background: 'var(--bg3)', border: '1px solid var(--border2)', borderRadius: 8, color: 'var(--txt2)', fontSize: 12, cursor: 'pointer', fontFamily: 'DM Sans, sans-serif', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
         onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(124,92,252,0.1)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--violet)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--violet2)'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg3)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border2)'; (e.currentTarget as HTMLButtonElement).style.color = 'var(--txt2)'; }}

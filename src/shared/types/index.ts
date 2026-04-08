@@ -9,7 +9,7 @@ export interface User {
   email: string;
   username: string;
   displayName: string;
-  avatarUrl?: string;
+  avatarUrl?: string | null;
   stats: { height: number; weight: number; age: number; gender: string };
   goals: FitnessGoal[];
   experienceLevel: ExperienceLevel;

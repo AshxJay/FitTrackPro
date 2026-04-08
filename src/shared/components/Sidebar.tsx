@@ -89,7 +89,7 @@ export default function Sidebar() {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <nav
+    <nav id="sidebar-nav"
       onMouseEnter={() => setExpanded(true)}
       onMouseLeave={() => setExpanded(false)}
       style={{
@@ -143,6 +143,7 @@ export default function Sidebar() {
 function NavItem({ item, active, expanded, onClick }: { item: typeof navItems[0]; active: boolean; expanded: boolean; onClick: () => void }) {
   return (
     <div
+      data-tab={item.id}
       onClick={onClick}
       style={{
         width: 'calc(100% - 12px)',

@@ -82,7 +82,7 @@ function mapFirebaseUserToUser(fu: FirebaseUser): User {
     email: fu.email ?? '',
     username: fu.displayName?.toLowerCase().replace(/\s+/g, '') ?? fu.uid.slice(0, 8),
     displayName: fu.displayName ?? 'Athlete',
-    avatarUrl: fu.photoURL ?? undefined,
+    avatarUrl: fu.photoURL ?? null,
     stats: { height: 175, weight: 75, age: 25, gender: 'unknown' },
     goals: ['general'],
     experienceLevel: 'intermediate',
@@ -234,37 +234,46 @@ onAuthStateChanged(auth, async (firebaseUser) => {
   const { setUser, setFirebaseUser, setTodayNutrition, setWorkoutHistory, setBodyMetrics } = useAppStore.getState();
 
   if (firebaseUser) {
-    let profile = await getUserProfile(firebaseUser.uid);
-    if (!profile) {
-      profile = mapFirebaseUserToUser(firebaseUser);
-      await createUserProfile(firebaseUser.uid, profile);
+    try {
+      let profile = await getUserProfile(firebaseUser.uid);
+      if (!profile) {
+        profile = mapFirebaseUserToUser(firebaseUser);
+        await createUserProfile(firebaseUser.uid, profile);
+      }
+
+      // Subscribe to today's nutrition
+      nutritionUnsub?.();
+      nutritionUnsub = subscribeToTodayNutrition(firebaseUser.uid, (data) => {
+        setTodayNutrition(data);
+      });
+
+      // Subscribe to workout history (real-time)
+      workoutHistoryUnsub?.();
+      workoutHistoryUnsub = subscribeToWorkoutHistory(firebaseUser.uid, (sessions) => {
+        setWorkoutHistory(sessions);
+      });
+
+      // Subscribe to body metrics (real-time)
+      bodyMetricsUnsub?.();
+      bodyMetricsUnsub = subscribeToBodyMetrics(firebaseUser.uid, (metrics) => {
+        setBodyMetrics(metrics);
+      });
+
+      useAppStore.setState({
+        firebaseUser,
+        user: profile,
+        isAuthenticated: true,
+        authLoading: false,
+        authError: null,
+      });
+    } catch (error: any) {
+      console.error("Error during session initialization:", error);
+      useAppStore.setState({ 
+        authLoading: false, 
+        authError: `Session initialization failed: ${error.message}` 
+      });
+      await signOut(auth);
     }
-
-    // Subscribe to today's nutrition
-    nutritionUnsub?.();
-    nutritionUnsub = subscribeToTodayNutrition(firebaseUser.uid, (data) => {
-      setTodayNutrition(data);
-    });
-
-    // Subscribe to workout history (real-time)
-    workoutHistoryUnsub?.();
-    workoutHistoryUnsub = subscribeToWorkoutHistory(firebaseUser.uid, (sessions) => {
-      setWorkoutHistory(sessions);
-    });
-
-    // Subscribe to body metrics (real-time)
-    bodyMetricsUnsub?.();
-    bodyMetricsUnsub = subscribeToBodyMetrics(firebaseUser.uid, (metrics) => {
-      setBodyMetrics(metrics);
-    });
-
-    useAppStore.setState({
-      firebaseUser,
-      user: profile,
-      isAuthenticated: true,
-      authLoading: false,
-      authError: null,
-    });
   } else {
     nutritionUnsub?.();
     workoutHistoryUnsub?.();

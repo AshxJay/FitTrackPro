@@ -8,7 +8,7 @@ export default function Topbar() {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--bg)' }}>
+    <div id="topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 28px', borderBottom: '1px solid var(--border)', flexShrink: 0, background: 'var(--bg)' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         <div style={{ fontSize: 11, color: 'var(--txt3)', fontWeight: 400, letterSpacing: '0.5px', textTransform: 'uppercase' }}>{dayStr}</div>
         <div style={{ fontFamily: 'Syne, sans-serif', fontSize: 20, fontWeight: 700, letterSpacing: '-0.5px' }}>{greeting}, {user?.displayName ? user.displayName.split(' ')[0] : 'Athlete'} 👋</div>
